@@ -29,8 +29,13 @@ func (c *mockSdkConnector) Connect(cfg *TestConfig) *sdk.Connection {
 	return &sdk.Connection{}
 }
 
-// Connect creates a connection to the environment specified by the AOC_USER, AOC_PASSWORD and
-// AOC_DOMAIN environment variables.
+/**
+Connect creates a connection to the environment specified by the AOC_USER, AOC_PASSWORD and
+AOC_DOMAIN environment variables.
+
+If a refresh / offline token is provided, it is used with the default `cloud-services` client.
+If a client and secret is provided then that alone is used.
+*/
 func (c *sdkConnector) Connect(cfg *TestConfig) *sdk.Connection {
 	t := &testing.T{}
 	RegisterTestingT(t)
@@ -46,20 +51,17 @@ func (c *sdkConnector) Connect(cfg *TestConfig) *sdk.Connection {
 		Logger(logger).
 		URL(cfg.BaseURL)
 
-	// Get the token:
-	token := os.Getenv(tokenEnv)
+	// If we don't have anything configured specifically for this test, attempt to rectify from the env
+	if cfg.Token != "" && cfg.ClientId == "" && cfg.ClientSecret == ""{
+		cfg.Token = os.Getenv(tokenEnv)
+		cfg.ClientId = os.Getenv(clientIdEnv)
+		cfg.ClientSecret = os.Getenv(clientSecretEnv)
+	}
 
-	if len(token) > 0 {
-		ExpectWithOffset(1, token).ToNot(BeEmpty(), "Environment variable '%s' is empty", tokenEnv)
-		builder = builder.
-			Tokens(token).
-			TokenURL("https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token").
-			Client("cloud-services", "")
-	} else {
-		clientId := os.Getenv(clientIdEnv)
-		clientSecret := os.Getenv(clientSecretEnv)
-		builder = builder.Client(clientId, clientSecret)
-
+	if cfg.Token != "" {
+		builder = builder.Tokens(cfg.Token)
+	} else if cfg.ClientId != "" && cfg.ClientSecret != "" {
+		builder = builder.Client(cfg.ClientId, cfg.ClientSecret)
 	}
 
 	// Create the connection:
@@ -80,6 +82,9 @@ type TestConfig struct {
 	SecretName   string
 	Labels       []string
 	SdkConnector SdkConnector
+	ClientId     string
+	ClientSecret string
+	Token        string
 }
 
 func NewTestConfig() *TestConfig {
