@@ -52,7 +52,7 @@ func (c *sdkConnector) Connect(cfg *TestConfig) *sdk.Connection {
 		URL(cfg.BaseURL)
 
 	// If we don't have anything configured specifically for this test, attempt to rectify from the env
-	if cfg.Token != "" && cfg.ClientId == "" && cfg.ClientSecret == ""{
+	if cfg.Token == "" && cfg.ClientId == "" && cfg.ClientSecret == ""{
 		cfg.Token = os.Getenv(tokenEnv)
 		cfg.ClientId = os.Getenv(clientIdEnv)
 		cfg.ClientSecret = os.Getenv(clientSecretEnv)
