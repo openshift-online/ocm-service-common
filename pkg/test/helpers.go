@@ -18,15 +18,15 @@ const (
 )
 
 type SdkConnector interface {
-	Connect(cfg *TestConfig) *sdk.Connection
+	Connect(cfg *TestConfig) (*sdk.Connection, error)
 }
 
 type sdkConnector struct{}
 
 type mockSdkConnector struct{}
 
-func (c *mockSdkConnector) Connect(cfg *TestConfig) *sdk.Connection {
-	return &sdk.Connection{}
+func (c *mockSdkConnector) Connect(cfg *TestConfig) (*sdk.Connection, error) {
+	return &sdk.Connection{}, nil
 }
 
 /**
@@ -36,7 +36,7 @@ AOC_DOMAIN environment variables.
 If a refresh / offline token is provided, it is used with the default `cloud-services` client.
 If a client and secret is provided then that alone is used.
 */
-func (c *sdkConnector) Connect(cfg *TestConfig) *sdk.Connection {
+func (c *sdkConnector) Connect(cfg *TestConfig) (*sdk.Connection, error) {
 	t := &testing.T{}
 	RegisterTestingT(t)
 
@@ -45,7 +45,10 @@ func (c *sdkConnector) Connect(cfg *TestConfig) *sdk.Connection {
 		Streams(GinkgoWriter, GinkgoWriter).
 		Debug(true).
 		Build()
-	ExpectWithOffset(1, err).ToNot(HaveOccurred())
+
+	if err != nil {
+		return nil, err
+	}
 
 	builder := sdk.NewConnectionBuilder().
 		Logger(logger).
@@ -66,9 +69,11 @@ func (c *sdkConnector) Connect(cfg *TestConfig) *sdk.Connection {
 
 	// Create the connection:
 	connection, err := builder.Build()
-	ExpectWithOffset(1, err).ToNot(HaveOccurred())
+	if err != nil {
+		return nil, err
+	}
 
-	return connection
+	return connection, nil
 }
 
 const (

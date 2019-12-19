@@ -29,7 +29,10 @@ var Connection *sdk.Connection
 // Run will run all tests in the suite.
 func Run(cfg *TestConfig) map[string][]string {
 
-	Connection = cfg.SdkConnector.Connect(cfg)
+	c, err := cfg.SdkConnector.Connect(cfg)
+	Connection = c
+
+	fmt.Errorf("Error connecting to sdk: %s", err)
 
 	results := map[string][]string{}
 
