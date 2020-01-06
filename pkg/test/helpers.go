@@ -1,6 +1,8 @@
 package test
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"testing"
 
@@ -63,8 +65,12 @@ func (c *sdkConnector) Connect(cfg *TestConfig) (*sdk.Connection, error) {
 
 	if cfg.Token != "" {
 		builder = builder.Tokens(cfg.Token)
+		fmt.Printf("Connecting to uhc sdk with token with last 8 chars: %s", cfg.Token[8:])
 	} else if cfg.ClientId != "" && cfg.ClientSecret != "" {
 		builder = builder.Client(cfg.ClientId, cfg.ClientSecret)
+		fmt.Printf("Connecting to uhc sdk with client/secret with clientId: %s", cfg.ClientId)
+	} else {
+		return nil, errors.New("No token or client/secret found to connect to uhc sdk")
 	}
 
 	// Create the connection:
