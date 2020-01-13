@@ -57,7 +57,7 @@ func (c *sdkConnector) Connect(cfg *TestConfig) (*sdk.Connection, error) {
 		URL(cfg.BaseURL)
 
 	// If we don't have anything configured specifically for this test, attempt to rectify from the env
-	if cfg.Token == "" && cfg.ClientId == "" && cfg.ClientSecret == ""{
+	if cfg.Token == "" && cfg.ClientId == "" && cfg.ClientSecret == "" {
 		cfg.Token = os.Getenv(tokenEnv)
 		cfg.ClientId = os.Getenv(clientIdEnv)
 		cfg.ClientSecret = os.Getenv(clientSecretEnv)
@@ -88,14 +88,15 @@ const (
 )
 
 type TestConfig struct {
-	SampleCount  int
-	BaseURL      string
-	SecretName   string
-	Labels       []string
-	SdkConnector SdkConnector
-	ClientId     string
-	ClientSecret string
-	Token        string
+	SampleCount      int
+	BaseURL          string
+	SecretName       string
+	Labels           []string
+	SdkConnector     SdkConnector
+	ClientId         string
+	ClientSecret     string
+	Token            string
+	DefaultAccountID string
 }
 
 func NewTestConfig() *TestConfig {
@@ -105,6 +106,7 @@ func NewTestConfig() *TestConfig {
 		SecretName:   "stage-creds",
 		Labels:       []string{"all"},
 		SdkConnector: &sdkConnector{},
+		DefaultAccountID: "No default account ID set, or unknown environment. Please set in helpers.go",
 	}
 }
 
@@ -118,7 +120,7 @@ func GetAccountID(cfg *TestConfig) string {
 	case "https://api.openshift.com":
 		return prodID
 	default:
-		return "unknown environment -- please set in helpers.go"
+		return cfg.DefaultAccountID
 	}
 }
 
