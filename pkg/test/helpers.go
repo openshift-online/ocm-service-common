@@ -45,7 +45,7 @@ func (c *sdkConnector) Connect(cfg *TestConfig) (*sdk.Connection, error) {
 	// Create a logger:
 	logger, err := sdk.NewStdLoggerBuilder().
 		Streams(GinkgoWriter, GinkgoWriter).
-		Debug(true).
+		Debug(cfg.Debug).
 		Build()
 
 	if err != nil {
