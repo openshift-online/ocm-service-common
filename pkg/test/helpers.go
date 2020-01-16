@@ -97,15 +97,16 @@ type TestConfig struct {
 	ClientSecret     string
 	Token            string
 	DefaultAccountID string
+	Debug            bool
 }
 
 func NewTestConfig() *TestConfig {
 	return &TestConfig{
-		SampleCount:  1,
-		BaseURL:      "https://api.stage.openshift.com",
-		SecretName:   "stage-creds",
-		Labels:       []string{"all"},
-		SdkConnector: &sdkConnector{},
+		SampleCount:      1,
+		BaseURL:          "https://api.stage.openshift.com",
+		SecretName:       "stage-creds",
+		Labels:           []string{"all"},
+		SdkConnector:     &sdkConnector{},
 		DefaultAccountID: "No default account ID set, or unknown environment. Please set in helpers.go",
 	}
 }
