@@ -1,26 +1,15 @@
 package test
 
 import (
-"errors"
-"fmt"
-"io"
-"testing"
-"time"
+	"errors"
+	"fmt"
+	"io"
+	"testing"
+	"time"
 
-. "github.com/onsi/gomega"
- "github.com/openshift-online/ocm-sdk-go"
+	. "github.com/onsi/gomega"
+	"github.com/openshift-online/ocm-sdk-go"
 )
-
-// map of label/test-name/test-func
-var Tests map[string]map[string]TestFunc
-
-type TestFunc func(t *testing.T)
-
-type TestCase struct {
-	Name     string
-	Labels   []string
-	TestFunc TestFunc
-}
 
 // connection is an OCM API client connection that is shared across all tests
 // Go's http.Client is safe for concurrent use across goroutines
@@ -54,48 +43,57 @@ func Run(cfg *TestConfig) map[string][]string {
 	// non-blocking buffered channel that receives test run data
 	ch := make(chan result, testCount)
 
-	go func() {
-		time.Sleep(50 * time.Millisecond)
-		for _, label := range cfg.Labels {
-			for name, test := range Tests[label] {
-				fmt.Printf("  -- running %s/%s\n", label, name)
-				testFn := test
-				func(n string) {
+	time.Sleep(50 * time.Millisecond)
+	for _, label := range cfg.Labels {
+		for name, test := range Tests[label] {
+			fmt.Printf("  -- running %s/%s\n", label, name)
+			testFn := test.TestFunc
+			setup := test.Setup
+			teardown := test.Teardown
 
-					results := []string{}
-					for i := 0; i < cfg.SampleCount; i++ {
-						start := time.Now()
+			go func(n string) {
+				results := []string{}
+				for i := 0; i < cfg.SampleCount; i++ {
 
-						m := testing.MainStart(
-							matchStringOnly(matchAll),
-							[]testing.InternalTest{
-								{
-									Name: n,
-									F: func(t *testing.T) {
-										RegisterTestingT(t)
-										testFn(t)
-									},
+					var elapsed string
+
+					m := testing.MainStart(
+						matchStringOnly(matchAll),
+						[]testing.InternalTest{
+							{
+								Name: n,
+								F: func(t *testing.T) {
+									RegisterTestingT(t)
+									if setup != nil {
+										setup(t)
+									}
+
+									start := time.Now()
+									testFn(t)
+									elapsed = time.Since(start).String()
+
+									if teardown != nil {
+										teardown(t)
+									}
 								},
 							},
-							[]testing.InternalBenchmark{},
-							[]testing.InternalExample{})
+						},
+						[]testing.InternalBenchmark{},
+						[]testing.InternalExample{})
 
-						status := m.Run()
-						elapsed := time.Since(start).String()
+					status := m.Run()
 
-						if status > 0 {
-							elapsed = n + " failed in " + elapsed
-						}
-
-						results = append(results, elapsed)
+					if status > 0 {
+						elapsed = n + " failed in " + elapsed
 					}
+					results = append(results, elapsed)
+				}
 
-					// sends results from this goroutine through the channel back to the main process
-					ch <- result{n, results}
-				}(name)
-			}
+				// sends results from this goroutine through the channel back to the main process
+				ch <- result{n, results}
+			}(name)
 		}
-	}()
+	}
 
 	for i := 0; i < testCount; i++ {
 		// blocks until receiving something from the channel
@@ -109,7 +107,7 @@ func Run(cfg *TestConfig) map[string][]string {
 }
 
 func init() {
-	Tests = make(map[string]map[string]TestFunc)
+	Tests = make(map[string]map[string]TestCase)
 }
 
 type IndexFunc func() []string
@@ -122,7 +120,7 @@ func AddTestCases(testCases []*TestCase) {
 
 func Add(testCase *TestCase) {
 	if _, found := Tests["all"]; !found {
-		Tests["all"] = make(map[string]TestFunc)
+		Tests["all"] = make(map[string]TestCase)
 	}
 
 	if _, ok := Tests["all"][testCase.Name]; ok {
@@ -132,12 +130,12 @@ func Add(testCase *TestCase) {
 	// special case where we don't want this test in the "all" bucket
 	if testCase.Name != ERRORTEST {
 		fmt.Printf("Adding test: %s/%s\n", "all", testCase.Name)
-		Tests["all"][testCase.Name] = testCase.TestFunc
+		Tests["all"][testCase.Name] = *testCase
 	}
 
 	for _, l := range testCase.Labels {
 		if _, found := Tests[l]; !found {
-			Tests[l] = make(map[string]TestFunc)
+			Tests[l] = make(map[string]TestCase)
 		}
 	}
 
@@ -146,7 +144,7 @@ func Add(testCase *TestCase) {
 			panic(fmt.Sprintf("TestCase[%s/%s] already exists", l, testCase.Name))
 		}
 		fmt.Printf("Adding test: %s/%s\n", l, testCase.Name)
-		Tests[l][testCase.Name] = testCase.TestFunc
+		Tests[l][testCase.Name] = *testCase
 	}
 }
 
