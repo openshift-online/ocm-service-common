@@ -3,6 +3,7 @@ package test
 import (
 	"encoding/json"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/golang/glog"
@@ -15,6 +16,19 @@ const (
 	DEFAULT_SECRET = "apicredentials"
 	DEFAUL_URL     = "https://api.stage.openshift.com"
 )
+
+// map of label/test-name/test-func
+var Tests map[string]map[string]TestCase
+
+type TestFunc func(t *testing.T)
+
+type TestCase struct {
+	Name     string
+	Labels   []string
+	TestFunc TestFunc
+	Setup    TestFunc
+	Teardown TestFunc
+}
 
 // TestRunners have keys that are concurrent nodes processing these tests
 type TestRunners map[string]TestResults
@@ -49,7 +63,6 @@ func FromMap(m map[string][]string) TestResults {
 	}
 	return tr
 }
-
 
 type ApiTest struct {
 	Name        string // 1:1 to ConfigMap.Name

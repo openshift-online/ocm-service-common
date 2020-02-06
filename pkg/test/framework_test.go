@@ -36,5 +36,47 @@ func TestRunner(t *testing.T) {
 
 	// Expect(ContainsError(apiTests)).To(BeTrue())
 	t.Logf("results = %#v", errMsg)
+}
 
+func testSetup(cfg *TestConfig) *TestCase {
+	return &TestCase{
+		Name:   "foo",
+		Labels: []string{},
+		TestFunc: func(t *testing.T) {
+			Expect(true).To(BeTrue(), "this is a test")
+		},
+		Setup: func(t *testing.T) {
+			t.Log("setup ...")
+		},
+		Teardown: func(t *testing.T) {
+			t.Log("teardown ...")
+		},
+	}
+}
+
+func TestPrepFuncs(t *testing.T) {
+	RegisterTestingT(t)
+
+	testCfg := &TestConfig{
+		SampleCount:  1,
+		Labels:       []string{"all"},
+		SdkConnector: &mockSdkConnector{},
+	}
+
+	Add(testSetup(testCfg))
+
+	results := Run(testCfg)
+	testResults := TestResults{}
+	for k, v := range results {
+		testResults[k] = v
+	}
+
+	apiTests := &ApiTest{
+		TestRunners: TestRunners{
+			"pod1": testResults,
+		},
+	}
+
+	_, hasError := apiTests.ContainsError()
+	Expect(hasError).To(BeFalse())
 }
