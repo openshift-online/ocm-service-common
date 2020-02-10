@@ -2,11 +2,11 @@ package test
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"testing"
 	"time"
 
+	"github.com/golang/glog"
 	. "github.com/onsi/gomega"
 	"github.com/openshift-online/ocm-sdk-go"
 )
@@ -19,9 +19,10 @@ var Connection *sdk.Connection
 func Run(cfg *TestConfig) map[string][]string {
 
 	c, err := cfg.SdkConnector.Connect(cfg)
+	if err != nil {
+		glog.Fatalf("Unable to create connection to SDK: %s", err)
+	}
 	Connection = c
-
-	fmt.Errorf("Error connecting to sdk: %s", err)
 
 	results := map[string][]string{}
 
@@ -46,7 +47,7 @@ func Run(cfg *TestConfig) map[string][]string {
 	time.Sleep(50 * time.Millisecond)
 	for _, label := range cfg.Labels {
 		for name, test := range Tests[label] {
-			fmt.Printf("  -- running %s/%s\n", label, name)
+			glog.Infof("  -- running %s/%s\n", label, name)
 			testFn := test.TestFunc
 			setup := test.Setup
 			teardown := test.Teardown
@@ -100,7 +101,7 @@ func Run(cfg *TestConfig) map[string][]string {
 		// will block testCount times in this loop until all tests have reported back
 		r := <-ch
 		results[r.name] = r.elapsed
-		fmt.Printf("received %#v\n", r)
+		glog.Infof("received %#v\n", r)
 	}
 
 	return results
@@ -124,12 +125,12 @@ func Add(testCase *TestCase) {
 	}
 
 	if _, ok := Tests["all"][testCase.Name]; ok {
-		panic(fmt.Sprintf("TestCase[%s/%s] already exists", "all", testCase.Name))
+		glog.Fatalf("TestCase[%s/%s] already exists", "all", testCase.Name)
 	}
 
 	// special case where we don't want this test in the "all" bucket
 	if testCase.Name != ERRORTEST {
-		fmt.Printf("Adding test: %s/%s\n", "all", testCase.Name)
+		glog.Infof("Adding test: %s/%s\n", "all", testCase.Name)
 		Tests["all"][testCase.Name] = *testCase
 	}
 
@@ -141,9 +142,9 @@ func Add(testCase *TestCase) {
 
 	for _, l := range testCase.Labels {
 		if _, ok := Tests[l][testCase.Name]; ok {
-			panic(fmt.Sprintf("TestCase[%s/%s] already exists", l, testCase.Name))
+			glog.Fatalf("TestCase[%s/%s] already exists", l, testCase.Name)
 		}
-		fmt.Printf("Adding test: %s/%s\n", l, testCase.Name)
+		glog.Infof("Adding test: %s/%s\n", l, testCase.Name)
 		Tests[l][testCase.Name] = *testCase
 	}
 }
