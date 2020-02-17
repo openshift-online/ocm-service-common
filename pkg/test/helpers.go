@@ -113,12 +113,15 @@ func NewTestConfig() *TestConfig {
 func GetAccountID(cfg *TestConfig) string {
 	prodID := "1MpGILXFZUlZuLldwGohxGaKxmW"
 	stageID := "1Mpeh6PlQVyIJtC1ebJ6GOTx5Pq"
+	intID := "1Nk17U3WwVgLWUHeGlNGcpcMasI"
 
 	switch cfg.BaseURL {
 	case "https://api.stage.openshift.com":
 		return stageID
 	case "https://api.openshift.com":
 		return prodID
+	case "https://api-integration.6943.hive-integration.openshiftapps.com":
+		return intID
 	default:
 		return cfg.DefaultAccountID
 	}
