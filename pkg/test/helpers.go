@@ -78,6 +78,9 @@ func (c *sdkConnector) Connect(cfg *TestConfig) (*sdk.Connection, error) {
 		return nil, err
 	}
 
+	accountId := GetAccountID(cfg)
+	glog.Infof("Using account id %s against BaseURL %s", accountId, cfg.BaseURL)
+
 	return connection, nil
 }
 
