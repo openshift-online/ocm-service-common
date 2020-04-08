@@ -113,6 +113,19 @@ func NewTestConfig() *TestConfig {
 	}
 }
 
+func GetEnvironment(url string) string {
+	switch url {
+	case "https://api.stage.openshift.com":
+		return "stage"
+	case "https://api.openshift.com":
+		return "prod"
+	case "https://api-integration.6943.hive-integration.openshiftapps.com":
+		return "int"
+	default:
+		return "dev"
+	}
+}
+
 func GetAccountID(cfg *TestConfig) string {
 	prodID := "1MpGILXFZUlZuLldwGohxGaKxmW"
 	stageID := "1Mpeh6PlQVyIJtC1ebJ6GOTx5Pq"
