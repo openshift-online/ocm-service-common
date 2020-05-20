@@ -1,151 +1,295 @@
 package test
 
 import (
-	"errors"
 	"io"
-	"testing"
+	"sync"
 	"time"
 
 	"github.com/golang/glog"
-	. "github.com/onsi/gomega"
-	"github.com/openshift-online/ocm-sdk-go"
+
+	errors "github.com/zgalor/weberr"
+
+	sdk "github.com/openshift-online/ocm-sdk-go"
 )
 
-// connection is an OCM API client connection that is shared across all tests
-// Go's http.Client is safe for concurrent use across goroutines
-var Connection *sdk.Connection
+type TestSuite struct {
+	// connection is an OCM API client connection that is shared across all tests
+	// Go's http.Client is safe for concurrent use across goroutines
+	connection *sdk.Connection
 
-// Run will run all tests in the suite.
-func Run(cfg *TestConfig) map[string][]string {
+	// map of label/test-name/test-func.
+	tests map[string]map[string]TestCase
 
-	c, err := cfg.SdkConnector.Connect(cfg)
+	// a slice of callbacks to run before the test suite.
+	beforeAllCallbacks []TestCallback
+
+	// a slice of callbacks to run After the test suite.
+	afterAllCallbacks []TestCallback
+
+	// the longest duration to wait for a request before timing out of a test suite run.
+	timeout time.Duration
+}
+
+type TestSuiteSpec struct {
+	SdkConnector       SDKConnector
+	Tests              map[string]map[string]TestCase
+	BeforeAllCallbacks []TestCallback
+	AfterAllCallbacks  []TestCallback
+	BaseURL            string
+	SecretName         string
+	ClientId           string
+	ClientSecret       string
+	Token              string
+	DefaultAccountID   string
+	Debug              bool
+	Timeout            time.Duration
+}
+
+type TestConfig struct {
+	// The number of times to run each test.
+	SampleCount int
+	// Tests run are filtered using these labels.
+	Labels []string
+}
+
+func BuildTestSuite(spec *TestSuiteSpec) (*TestSuite, error) {
+	conn, err := spec.SdkConnector.Connect(spec)
 	if err != nil {
-		glog.Fatalf("Unable to create connection to SDK: %s", err)
-	}
-	Connection = c
-
-	results := map[string][]string{}
-
-	type result struct {
-		name    string
-		elapsed []string
+		return nil, errors.Errorf("Unable to run test framework, connection to SDK must be provided")
 	}
 
-	// how many tests are going to run?
-	// each label has an indeterminate number of tests.
-	// TODO: better way to count these??
-	testCount := 0
+	// Default timeout to five minutes.
+	if spec.Timeout == 0 {
+		spec.Timeout = 5 * time.Minute
+	}
+
+	return &TestSuite{
+		connection: conn,
+		tests:      spec.Tests,
+		timeout:    spec.Timeout,
+	}, nil
+}
+
+func (t *TestSuite) Connection() *sdk.Connection {
+	return t.connection
+}
+
+// Run will run all the requests and assertions in the suite that match a given set of labels.
+// Each test will be run as many times as provided by SampleCount
+func (t *TestSuite) Run(cfg *TestConfig) map[string][]Result {
+	testCases := make(map[string]TestCase)
+	results := make(map[string][]Result)
+
+	defer func() {
+		// Run "AfterSuite" callbacks.
+		for _, callback := range t.afterAllCallbacks {
+			err := callback()
+			if err != nil {
+				glog.Fatalf("Failed to run 'after suite' callbacks: %v", err)
+			}
+		}
+	}()
+
+	// Tests can appear in different labels.
+	// For that reason we need to "flatten" the two-level mapping.
+	// That is, go over each label and collect the test cases to one
+	// mapping which maps each name to their respective test.
+	// this mapping can then be used to run all tests.
+	// cfg.Labels is by default []string{"all"}.
 	for _, label := range cfg.Labels {
-		if tests, found := Tests[label]; found {
-			testCount = testCount + len(tests)
+		if tests, found := t.tests[label]; found {
+			for testCaseName, testCase := range tests {
+				if _, found := testCases[testCaseName]; !found {
+					testCases[testCaseName] = testCase
+				}
+			}
 		}
 	}
 
+	testCount := len(testCases)
+
 	// non-blocking buffered channel that receives test run data
-	ch := make(chan result, testCount)
+	ch := make(chan Result, testCount*cfg.SampleCount)
 
 	time.Sleep(50 * time.Millisecond)
-	for _, label := range cfg.Labels {
-		for name, test := range Tests[label] {
-			glog.Infof("  -- running %s/%s\n", label, name)
-			testFn := test.TestFunc
+
+	// Run "BeforeSuite" callbacks.
+	for _, callback := range t.beforeAllCallbacks {
+		err := callback()
+		if err != nil {
+			glog.Fatalf("Failed to run 'before suite' callbacks: %v", err)
+			return nil
+		}
+	}
+
+	// This goroutine will run the tests cases in seperate goroutines
+	// and wait for them to finish before closing the channel, informing the
+	// main goroutine that the tests have finished.
+	go func(ch chan<- Result) {
+		wg := sync.WaitGroup{}
+		for name, test := range testCases {
+			glog.Infof("  -- running %s\n", name)
+			testFunc := test.TestFunc
 			setup := test.Setup
 			teardown := test.Teardown
 
-			go func(n string) {
-				results := []string{}
+			// Add to wait group.
+			wg.Add(1)
+
+			go func(name string, test TestCase) {
 				for i := 0; i < cfg.SampleCount; i++ {
+					var err error
+					var response *sdk.Response
+					var latency int64
 
-					var elapsed string
-
-					m := testing.MainStart(
-						matchStringOnly(matchAll),
-						[]testing.InternalTest{
-							{
-								Name: n,
-								F: func(t *testing.T) {
-									RegisterTestingT(t)
-									if setup != nil {
-										setup(t)
-									}
-
-									start := time.Now()
-									testFn(t)
-									elapsed = time.Since(start).String()
-
-									if teardown != nil {
-										teardown(t)
-									}
-								},
-							},
-						},
-						[]testing.InternalBenchmark{},
-						[]testing.InternalExample{})
-
-					status := m.Run()
-
-					if status > 0 {
-						elapsed = n + " failed in " + elapsed
+					if setup != nil {
+						if err = setup(test.State); err != nil {
+							glog.Errorf("Failed to run setup for test '%s': %v", name, err)
+							continue
+						}
 					}
-					results = append(results, elapsed)
-				}
+					start := time.Now()
+					response, err = testFunc(test.State)
+					latency = time.Since(start).Milliseconds()
+					if err != nil {
+						// Request failed send results immediatly.
+						ch <- Result{
+							name,
+							err,
+							latency,
+							0,
+						}
+						continue
+					}
 
-				// sends results from this goroutine through the channel back to the main process
-				ch <- result{n, results}
-			}(name)
+					responseSize := len(response.Bytes())
+
+					// Run assertions.
+					for _, assertion := range test.ResponseAssertions {
+						if err = assertion(response); err != nil {
+							ch <- Result{
+								name,
+								err,
+								latency,
+								responseSize,
+							}
+							// regardless if several assertions fail we still
+							// consider this roundtrip result as a single "error".
+							break
+						}
+					}
+
+					// Send succesful result.
+					if err == nil {
+						ch <- Result{
+							name,
+							nil,
+							latency,
+							responseSize,
+						}
+					}
+
+					if teardown != nil {
+						if err = teardown(test.State); err != nil {
+							glog.Errorf("Failed to run tear down for test '%s': %v", name, err)
+						}
+					}
+				}
+				// Decrement the Wait group.
+				wg.Done()
+			}(name, test)
+		}
+
+		// Wait to close the channel.
+		wg.Wait()
+		close(ch)
+	}(ch)
+
+	// flush the channel.
+	// this is a stream of results coming in.
+	// we can have multiple results for the same test;
+	// depending on the cfg.SampleCount field
+	timer := time.NewTimer(t.timeout)
+	for {
+		select {
+		case r, ok := <-ch:
+			if ok {
+				if _, found := results[r.Name]; !found {
+					results[r.Name] = make([]Result, 0)
+				}
+				results[r.Name] = append(results[r.Name], r)
+				glog.Infof("received %#v\n", r)
+
+				// reset the request timeout clock.
+				timer.Stop()
+				timer.Reset(t.timeout)
+			} else {
+				return results
+			}
+		case <-timer.C:
+			glog.Errorf("Timed out waiting for a result from the tests cases, returning partial results.")
+			return results
 		}
 	}
-
-	for i := 0; i < testCount; i++ {
-		// blocks until receiving something from the channel
-		// will block testCount times in this loop until all tests have reported back
-		r := <-ch
-		results[r.name] = r.elapsed
-		glog.Infof("received %#v\n", r)
-	}
-
-	return results
 }
 
+//initialize in-memory test data structures and callbacks.
 func init() {
-	Tests = make(map[string]map[string]TestCase)
+
 }
 
 type IndexFunc func() []string
 
-func AddTestCases(testCases []*TestCase) {
+func (t *TestSuite) AddBeforeSuite(callbacks []TestCallback) {
+	if t.beforeAllCallbacks == nil {
+		t.beforeAllCallbacks = make([]TestCallback, 0)
+	}
+	t.beforeAllCallbacks = append(t.beforeAllCallbacks, callbacks...)
+}
+
+func (t *TestSuite) AddAfterSuite(callbacks []TestCallback) {
+	if t.afterAllCallbacks == nil {
+		t.afterAllCallbacks = make([]TestCallback, 0)
+	}
+	t.afterAllCallbacks = append(t.afterAllCallbacks, callbacks...)
+}
+
+func (t *TestSuite) AddTestCases(testCases []*TestCase) {
 	for _, tc := range testCases {
-		Add(tc)
+		t.Add(tc)
 	}
 }
 
-func Add(testCase *TestCase) {
-	if _, found := Tests["all"]; !found {
-		Tests["all"] = make(map[string]TestCase)
+func (t *TestSuite) Add(testCase *TestCase) {
+	if t.tests == nil {
+		t.tests = make(map[string]map[string]TestCase)
 	}
 
-	if _, ok := Tests["all"][testCase.Name]; ok {
+	if _, found := t.tests["all"]; !found {
+		t.tests["all"] = make(map[string]TestCase)
+	}
+
+	if _, ok := t.tests["all"][testCase.Name]; ok {
 		glog.Fatalf("TestCase[%s/%s] already exists", "all", testCase.Name)
 	}
 
 	// special case where we don't want this test in the "all" bucket
 	if testCase.Name != ERRORTEST {
 		glog.Infof("Adding test: %s/%s\n", "all", testCase.Name)
-		Tests["all"][testCase.Name] = *testCase
+		t.tests["all"][testCase.Name] = *testCase
 	}
 
 	for _, l := range testCase.Labels {
-		if _, found := Tests[l]; !found {
-			Tests[l] = make(map[string]TestCase)
+		if _, found := t.tests[l]; !found {
+			t.tests[l] = make(map[string]TestCase)
 		}
-	}
 
-	for _, l := range testCase.Labels {
-		if _, ok := Tests[l][testCase.Name]; ok {
+		if _, ok := t.tests[l][testCase.Name]; ok {
 			glog.Fatalf("TestCase[%s/%s] already exists", l, testCase.Name)
 		}
+
 		glog.Infof("Adding test: %s/%s\n", l, testCase.Name)
-		Tests[l][testCase.Name] = *testCase
+		t.tests[l][testCase.Name] = *testCase
 	}
 }
 
@@ -157,11 +301,11 @@ type matchStringOnly func(pat, str string) (bool, error)
 
 func (f matchStringOnly) MatchString(pat, str string) (bool, error) { return true, nil }
 func (f matchStringOnly) StartCPUProfile(w io.Writer) error {
-	return errors.New("testing: StartCPUProfile not implemented")
+	return errors.Errorf("testing: StartCPUProfile not implemented")
 }
 func (f matchStringOnly) StopCPUProfile() {}
 func (f matchStringOnly) WriteProfileTo(string, io.Writer, int) error {
-	return errors.New("testing: WriteProfileTo not implemented")
+	return errors.Errorf("testing: WriteProfileTo not implemented")
 }
 func (f matchStringOnly) ImportPath() string     { return "" }
 func (f matchStringOnly) StartTestLog(io.Writer) {}

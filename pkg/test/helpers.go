@@ -1,14 +1,17 @@
 package test
 
 import (
-	"errors"
+	"fmt"
+	"net/http"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/golang/glog"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"github.com/openshift-online/ocm-sdk-go"
+	sdk "github.com/openshift-online/ocm-sdk-go"
+	errors "github.com/zgalor/weberr"
 )
 
 // Names of the environment variables:
@@ -18,16 +21,28 @@ const (
 	clientSecretEnv = "AMS_CLIENT_SECRET"
 )
 
-type SdkConnector interface {
-	Connect(cfg *TestConfig) (*sdk.Connection, error)
+type SDKConnector interface {
+	Connect(spec *TestSuiteSpec) (*sdk.Connection, error)
 }
 
 type sdkConnector struct{}
 
 type mockSdkConnector struct{}
 
-func (c *mockSdkConnector) Connect(cfg *TestConfig) (*sdk.Connection, error) {
-	return &sdk.Connection{}, nil
+type mockRoundTripper struct{}
+
+func (m *mockRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
+	fmt.Println("roundtrip")
+	return &http.Response{
+		StatusCode: http.StatusOK,
+	}, nil
+}
+
+func (c *mockSdkConnector) Connect(spec *TestSuiteSpec) (*sdk.Connection, error) {
+	return sdk.NewConnectionBuilder().TransportWrapper(func(wrapped http.RoundTripper) http.RoundTripper {
+		fmt.Println("swapping round tripper")
+		return new(mockRoundTripper)
+	}).Client("foo", "bar").Build()
 }
 
 /**
@@ -37,14 +52,14 @@ AOC_DOMAIN environment variables.
 If a refresh / offline token is provided, it is used with the default `cloud-services` client.
 If a client and secret is provided then that alone is used.
 */
-func (c *sdkConnector) Connect(cfg *TestConfig) (*sdk.Connection, error) {
+func (c *sdkConnector) Connect(spec *TestSuiteSpec) (*sdk.Connection, error) {
 	t := &testing.T{}
 	RegisterTestingT(t)
 
 	// Create a logger:
 	logger, err := sdk.NewStdLoggerBuilder().
 		Streams(GinkgoWriter, GinkgoWriter).
-		Debug(cfg.Debug).
+		Debug(spec.Debug).
 		Build()
 
 	if err != nil {
@@ -53,23 +68,23 @@ func (c *sdkConnector) Connect(cfg *TestConfig) (*sdk.Connection, error) {
 
 	builder := sdk.NewConnectionBuilder().
 		Logger(logger).
-		URL(cfg.BaseURL)
+		URL(spec.BaseURL)
 
 	// If we don't have anything configured specifically for this test, attempt to rectify from the env
-	if cfg.Token == "" && cfg.ClientId == "" && cfg.ClientSecret == "" {
-		cfg.Token = os.Getenv(tokenEnv)
-		cfg.ClientId = os.Getenv(clientIdEnv)
-		cfg.ClientSecret = os.Getenv(clientSecretEnv)
+	if spec.Token == "" && spec.ClientId == "" && spec.ClientSecret == "" {
+		spec.Token = os.Getenv(tokenEnv)
+		spec.ClientId = os.Getenv(clientIdEnv)
+		spec.ClientSecret = os.Getenv(clientSecretEnv)
 	}
 
-	if cfg.Token != "" {
-		builder = builder.Tokens(cfg.Token)
-		glog.Infof("Connecting to uhc sdk with token with last 8 chars: %s", cfg.Token[len(cfg.Token)-8:])
-	} else if cfg.ClientId != "" && cfg.ClientSecret != "" {
-		builder = builder.Client(cfg.ClientId, cfg.ClientSecret)
-		glog.Infof("Connecting to uhc sdk with client/secret with clientId: %s", cfg.ClientId)
+	if spec.Token != "" {
+		builder = builder.Tokens(spec.Token)
+		glog.Infof("Connecting to uhc sdk with token with last 8 chars: %s", spec.Token[len(spec.Token)-8:])
+	} else if spec.ClientId != "" && spec.ClientSecret != "" {
+		builder = builder.Client(spec.ClientId, spec.ClientSecret)
+		glog.Infof("Connecting to uhc sdk with client/secret with clientId: %s", spec.ClientId)
 	} else {
-		return nil, errors.New("No token or client/secret found to connect to uhc sdk")
+		return nil, errors.Errorf("No token or client/secret found to connect to uhc sdk")
 	}
 
 	// Create the connection:
@@ -78,8 +93,8 @@ func (c *sdkConnector) Connect(cfg *TestConfig) (*sdk.Connection, error) {
 		return nil, err
 	}
 
-	accountId := GetAccountID(cfg)
-	glog.Infof("Using account id %s against BaseURL %s", accountId, cfg.BaseURL)
+	accountId := GetAccountID(spec)
+	glog.Infof("Using account id %s against BaseURL %s", accountId, spec.BaseURL)
 
 	return connection, nil
 }
@@ -89,27 +104,20 @@ const (
 	REGRESSION  string = "regression"
 )
 
-type TestConfig struct {
-	SampleCount      int
-	BaseURL          string
-	SecretName       string
-	Labels           []string
-	SdkConnector     SdkConnector
-	ClientId         string
-	ClientSecret     string
-	Token            string
-	DefaultAccountID string
-	Debug            bool
-}
-
 func NewTestConfig() *TestConfig {
 	return &TestConfig{
-		SampleCount:      1,
+		SampleCount: 1,
+		Labels:      []string{"all"},
+	}
+}
+
+func NewTestSuiteSpec() *TestSuiteSpec {
+	return &TestSuiteSpec{
 		BaseURL:          "https://api.stage.openshift.com",
 		SecretName:       "stage-creds",
-		Labels:           []string{"all"},
 		SdkConnector:     &sdkConnector{},
 		DefaultAccountID: "No default account ID set, or unknown environment. Please set in helpers.go",
+		Timeout:          5 * time.Minute,
 	}
 }
 
@@ -126,12 +134,12 @@ func GetEnvironment(url string) string {
 	}
 }
 
-func GetAccountID(cfg *TestConfig) string {
+func GetAccountID(spec *TestSuiteSpec) string {
 	prodID := "1MpGILXFZUlZuLldwGohxGaKxmW"
 	stageID := "1Mpeh6PlQVyIJtC1ebJ6GOTx5Pq"
 	intID := "1Nk17U3WwVgLWUHeGlNGcpcMasI"
 
-	switch cfg.BaseURL {
+	switch spec.BaseURL {
 	case "https://api.stage.openshift.com":
 		return stageID
 	case "https://api.openshift.com":
@@ -139,22 +147,31 @@ func GetAccountID(cfg *TestConfig) string {
 	case "https://api-integration.6943.hive-integration.openshiftapps.com":
 		return intID
 	default:
-		return cfg.DefaultAccountID
+		return spec.DefaultAccountID
 	}
 }
 
 const ERRORTEST = "error"
 
 // TestError is a special purpose scenario for testing sentry integration
-func TestError(cfg *TestConfig) *TestCase {
+func TestError(suite *TestSuite) *TestCase {
 	return &TestCase{
 		Name: ERRORTEST,
 		Labels: []string{
 			"error",
 		},
-		TestFunc: func(t *testing.T) {
-			t.Logf("t.logging ... error!")
-			Expect(false).To(BeTrue(), "this is a test")
+		TestFunc: func(s TestState) (*sdk.Response, error) {
+			return suite.Connection().Get().Path("/api/clusters_mgmt/v1/").Send()
 		},
+	}
+}
+
+func AssertResponseStatusOK() ResponseAssertion {
+	return func(r *sdk.Response) error {
+		if r.Status() != http.StatusOK {
+			return errors.Errorf("Expected response code %d, but found: %d",
+				http.StatusOK, r.Status())
+		}
+		return nil
 	}
 }

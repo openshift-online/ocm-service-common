@@ -7,4 +7,5 @@ require (
 	github.com/onsi/ginkgo v1.10.1
 	github.com/onsi/gomega v1.7.0
 	github.com/openshift-online/ocm-sdk-go v0.1.84
+	github.com/zgalor/weberr v0.6.0
 )
