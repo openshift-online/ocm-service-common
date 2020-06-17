@@ -233,11 +233,6 @@ func (t *TestSuite) Run(cfg *TestConfig) map[string][]Result {
 	}
 }
 
-//initialize in-memory test data structures and callbacks.
-func init() {
-
-}
-
 type IndexFunc func() []string
 
 func (t *TestSuite) AddBeforeSuite(callbacks []TestCallback) {
