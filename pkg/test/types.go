@@ -18,10 +18,11 @@ const (
 
 // A test result.
 type Result struct {
-	Name    string
-	Error   error
-	Latency int64
-	Size    int
+	Name string `json:"name"`
+	// Represents the underlying error message or nil of not provided.
+	Error   *string `json:"error"`
+	Latency int64   `json:"latency"`
+	Size    int     `json:"size"`
 }
 
 // A series of assertion ran on the response of the request sent.
@@ -89,12 +90,12 @@ func (a *ApiTest) HasResults(testRunnerName string) bool {
 	return len(testResults) > 0
 }
 
-func (a *ApiTest) ContainsError() (error, bool) {
+func (a *ApiTest) ContainsError() (*string, bool) {
 	for podName, nameToResults := range a.TestRunners {
 		for _, results := range nameToResults {
 			for _, result := range results {
 				if result.Error != nil {
-					glog.Errorf("TestRunner %s and test %s contains error: %s", podName, result.Error, result.Error)
+					glog.Errorf("TestRunner %s and test %s contains error: %s", podName, result.Name, *result.Error)
 					return result.Error, true
 				}
 			}

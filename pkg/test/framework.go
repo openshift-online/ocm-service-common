@@ -153,12 +153,12 @@ func (t *TestSuite) Run(cfg *TestConfig) map[string][]Result {
 					latency = time.Since(start).Milliseconds()
 					if err != nil {
 						// Request failed send results immediatly.
-						ch <- Result{
+						ch <- NewResult(
 							name,
 							err,
 							latency,
 							0,
-						}
+						)
 						continue
 					}
 
@@ -167,12 +167,12 @@ func (t *TestSuite) Run(cfg *TestConfig) map[string][]Result {
 					// Run assertions.
 					for _, assertion := range test.ResponseAssertions {
 						if err = assertion(response); err != nil {
-							ch <- Result{
+							ch <- NewResult(
 								name,
 								err,
 								latency,
 								responseSize,
-							}
+							)
 							// regardless if several assertions fail we still
 							// consider this roundtrip result as a single "error".
 							break
@@ -181,12 +181,12 @@ func (t *TestSuite) Run(cfg *TestConfig) map[string][]Result {
 
 					// Send succesful result.
 					if err == nil {
-						ch <- Result{
+						ch <- NewResult(
 							name,
 							nil,
 							latency,
 							responseSize,
-						}
+						)
 					}
 
 					if teardown != nil {
@@ -286,6 +286,29 @@ func (t *TestSuite) Add(testCase *TestCase) {
 		glog.Infof("Adding test: %s/%s\n", l, testCase.Name)
 		t.tests[l][testCase.Name] = *testCase
 	}
+}
+
+func NewResult(name string, err error, latency int64, size int) Result {
+	return Result{
+		Name:    name,
+		Error:   StringPtrFromErr(err),
+		Latency: latency,
+		Size:    size,
+	}
+}
+
+func StringPtrFromErr(err error) *string {
+	if err == nil {
+		return nil
+	}
+	return NewString(err.Error())
+}
+
+func NewString(str string) *string {
+	if str == "" {
+		return nil
+	}
+	return &str
 }
 
 func matchAll(pat, str string) (bool, error) {
