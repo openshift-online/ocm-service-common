@@ -9,7 +9,7 @@ import (
 
 type ContinuousTestConfig struct {
 	// channel to recieve results on
-	resultsCh chan<- Result
+	ResultsCh chan<- Result
 	// labels of the tests to run.
 	Labels []string
 }
@@ -124,6 +124,6 @@ func (t *TestSuite) RunContinuous(cfg ContinuousTestConfig) {
 
 			}(name, test)
 		}
-	}(cfg.resultsCh)
+	}(cfg.ResultsCh)
 
 }
