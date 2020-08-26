@@ -37,8 +37,7 @@ func TestTokenMiddlewareSuccess(t *testing.T) {
 	headers := make(map[string][]string)
 	authHeader := fmt.Sprintf("AccessToken b82847e7-dde7-4fb5-a55a-ab00b7b7dc62:%s", tokenAuth)
 	headers["Authorization"] = []string{authHeader}
-	ctx := tokenMiddleware.Authenticate(context.Background(), headers)
-	tokenAuthFoundAccountID := ctx.Value(ContextAccountIDKey)
+	tokenAuthFoundAccountID := tokenMiddleware.Authenticate(context.Background(), headers)
 
 	// Found account matching registry credential in Authorization header
 	Expect(tokenAuthFoundAccountID).To(Equal(accountID))
@@ -59,17 +58,15 @@ func TestTokenMiddlewareFailure(t *testing.T) {
 
 	// Invalid AccessToken
 	headers["Authorization"] = []string{"AccessToken invalid-nonsense"}
-	ctx := tokenMiddleware.Authenticate(context.Background(), headers)
-	missingAccountId := ctx.Value(ContextAccountIDKey)
+	missingAccountId := tokenMiddleware.Authenticate(context.Background(), headers)
 
 	// No account found
-	Expect(missingAccountId).To(BeNil())
+	Expect(missingAccountId).To(BeEmpty())
 
 	// No AccessToken Header
 	headers["Authorization"] = []string{""}
-	ctx = tokenMiddleware.Authenticate(context.Background(), headers)
-	missingAccountId = ctx.Value(ContextAccountIDKey)
+	missingAccountId = tokenMiddleware.Authenticate(context.Background(), headers)
 
 	// No account found
-	Expect(missingAccountId).To(BeNil())
+	Expect(missingAccountId).To(BeEmpty())
 }
