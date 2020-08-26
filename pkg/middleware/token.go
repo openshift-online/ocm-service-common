@@ -32,7 +32,7 @@ func NewTokenAuthMiddleware(connection *sdk.Connection) (*TokenAuthMiddleware, e
 	return &middleware, nil
 }
 
-func (t *TokenAuthMiddleware) Authenticate(ctx context.Context, headers http.Header) context.Context {
+func (t *TokenAuthMiddleware) Authenticate(ctx context.Context, headers http.Header) string {
 	var token string
 
 	// parse Authorization: AccessToken header
@@ -57,18 +57,19 @@ func (t *TokenAuthMiddleware) Authenticate(ctx context.Context, headers http.Hea
 				if ok {
 					account := readResponse.Account()
 					accountId := account.ID()
-					ctx = context.WithValue(ctx, ContextAccountIDKey, accountId)
+					return accountId
 				}
 
 			}
 		}
 	}
-	return ctx
+	return ""
 }
 
 func (t *TokenAuthMiddleware) AuthenticateToken(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := t.Authenticate(r.Context(), r.Header)
+		accountId := t.Authenticate(r.Context(), r.Header)
+		ctx := context.WithValue(r.Context(), ContextAccountIDKey, accountId)
 		*r = *r.WithContext(ctx)
 		next.ServeHTTP(w, r)
 	})
