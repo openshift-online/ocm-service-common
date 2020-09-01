@@ -10,8 +10,9 @@ import (
 )
 
 const (
-	accessToken         = "AccessToken"
-	ContextAccountIDKey = "accountID"
+	accessToken               = "AccessToken"
+	ContextAccountIDKey       = "accountID"
+	ContextAccountUsernameKey = "accountUsername"
 )
 
 type TokenMiddleware interface {
@@ -32,7 +33,7 @@ func NewTokenAuthMiddleware(connection *sdk.Connection) (*TokenAuthMiddleware, e
 	return &middleware, nil
 }
 
-func (t *TokenAuthMiddleware) Authenticate(ctx context.Context, headers http.Header) string {
+func (t *TokenAuthMiddleware) Authenticate(ctx context.Context, headers http.Header) (string, string) {
 	var token string
 
 	// parse Authorization: AccessToken header
@@ -56,20 +57,20 @@ func (t *TokenAuthMiddleware) Authenticate(ctx context.Context, headers http.Hea
 				readResponse, ok := response.GetResponse()
 				if ok {
 					account := readResponse.Account()
-					accountId := account.ID()
-					return accountId
+					return account.ID(), account.Username()
 				}
 
 			}
 		}
 	}
-	return ""
+	return "", ""
 }
 
 func (t *TokenAuthMiddleware) AuthenticateToken(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		accountId := t.Authenticate(r.Context(), r.Header)
-		ctx := context.WithValue(r.Context(), ContextAccountIDKey, accountId)
+		id, username := t.Authenticate(r.Context(), r.Header)
+		ctx := context.WithValue(r.Context(), ContextAccountIDKey, id)
+		ctx = context.WithValue(ctx, ContextAccountUsernameKey, username)
 		*r = *r.WithContext(ctx)
 		next.ServeHTTP(w, r)
 	})
