@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	accessToken               = "AccessToken"
+	AccessToken               = "AccessToken"
 	ContextAccountIDKey       = "accountID"
 	ContextAccountUsernameKey = "accountUsername"
 )
@@ -39,7 +39,7 @@ func (t *TokenAuthMiddleware) Authenticate(ctx context.Context, headers http.Hea
 	// parse Authorization: AccessToken header
 	authHeader := headers.Get("Authorization")
 	headerParts := strings.Split(authHeader, " ")
-	if len(headerParts) == 2 && headerParts[0] == accessToken {
+	if len(headerParts) == 2 && headerParts[0] == AccessToken {
 		authParts := strings.Split(headerParts[1], ":")
 		if len(authParts) == 2 {
 			token = authParts[1]
