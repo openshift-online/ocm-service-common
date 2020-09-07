@@ -292,6 +292,10 @@ func (t *TestSuite) Add(testCase *TestCase) {
 	}
 }
 
+func (t *TestSuite) GetDefaultAccountID() string {
+	return t.defaultAccountID
+}
+
 func NewResult(name string, err error, latency int64, size int) Result {
 	return Result{
 		Name:    name,
