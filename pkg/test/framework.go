@@ -28,6 +28,9 @@ type TestSuite struct {
 
 	// the longest duration to wait for a request before timing out of a test suite run.
 	timeout time.Duration
+
+	// the default account id of the test suite
+	defaultAccountID string
 }
 
 type TestSuiteSpec struct {
@@ -64,9 +67,10 @@ func BuildTestSuite(spec *TestSuiteSpec) (*TestSuite, error) {
 	}
 
 	return &TestSuite{
-		connection: conn,
-		tests:      spec.Tests,
-		timeout:    spec.Timeout,
+		connection:       conn,
+		tests:            spec.Tests,
+		timeout:          spec.Timeout,
+		defaultAccountID: spec.DefaultAccountID,
 	}, nil
 }
 
