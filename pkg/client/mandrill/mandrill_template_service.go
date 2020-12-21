@@ -25,14 +25,15 @@ type ContentBlock struct {
 }
 
 type Message struct {
-	Subject         string     `json:"subject"`
-	FromEmail       string     `json:"from_email"`
-	FromName        string     `json:"from_name"`
-	To              []To       `json:"to"`
-	BccAddress      string     `json:"bcc_address"`
-	Merge           bool       `json:"merge"`
-	MergeLanguage   string     `json:"merge_language"`
-	GlobalMergeVars []MergeVar `json:"global_merge_vars"`
+	Subject            string     `json:"subject"`
+	FromEmail          string     `json:"from_email"`
+	FromName           string     `json:"from_name"`
+	To                 []To       `json:"to"`
+	BccAddress         string     `json:"bcc_address"`
+	Merge              bool       `json:"merge"`
+	MergeLanguage      string     `json:"merge_language"`
+	GlobalMergeVars    []MergeVar `json:"global_merge_vars"`
+	PreserveRecipients bool       `json:"preserve_recipients"`
 }
 
 type To struct {
