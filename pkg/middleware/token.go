@@ -51,7 +51,7 @@ func (t *TokenAuthMiddleware) Authenticate(ctx context.Context, headers http.Hea
 		request, err := v1.NewTokenAuthorizationRequest().AuthorizationToken(token).Build()
 		if err == nil {
 			api := t.connection.AccountsMgmt().V1()
-			response, err := api.TokenAuthorization().Post().Request(request).Send()
+			response, err := api.TokenAuthorization().Post().Request(request).SendContext(ctx)
 
 			if err == nil {
 				readResponse, ok := response.GetResponse()
