@@ -10,3 +10,7 @@ ifndef GOPATH
 	$(error GOPATH is not set)
 endif
 .PHONY: check-gopath
+
+.PHONY: test
+test:
+	ginkgo $(ginkgo_flags) -r pkg/client/jira
