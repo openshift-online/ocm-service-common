@@ -1,13 +1,14 @@
 package jira
 
 import (
-	"reflect"
-	"strings"
-	"io"
 	"fmt"
-	
+	"io"
+	"reflect"
+
 	"github.com/andygrunwald/go-jira"
 	errors "github.com/zgalor/weberr"
+
+	"gitlab.cee.redhat.com/service/ocm-common/utils"
 )
 
 // This code is based on https://github.com/andygrunwald/go-jira
@@ -34,22 +35,23 @@ func NewClient(user, pass, url string) (*Client, error) {
 	return client, nil
 }
 
-func (c *Client) CreateIssue(fieldsConfig *FieldsConfiguration) (issue *jira.Issue, err error) {
-	if fieldsConfig == nil {
-		return nil, errors.BadRequest.Errorf("Jira client configuration is nil")
+func (c *Client) validateFieldsConfig(fieldsConfig *FieldsConfiguration) error {
+	rules := []utils.ValidateRule{
+		utils.ValidateNilObject(fieldsConfig, "Fields configuration"),
+		utils.ValidateStringParameterNotEmpty(fieldsConfig.Summary, "summary"),
+		utils.ValidateStringParameterNotEmpty(fieldsConfig.Reporter, "reporter"),
+		utils.ValidateStringParameterNotEmpty(fieldsConfig.IssueType, "issue_type"),
+		utils.ValidateStringParameterNotEmpty(fieldsConfig.Project, "project"),
 	}
+	if err := utils.Validate(rules); err != nil {
+		return err
+	}
+	return nil
+}
 
-	rules := []validateRule{
-		validateNilField(fieldsConfig.Summary, "Summary"),
-		validateStringParameterNotEmpty(fieldsConfig.Summary, "Summary"),
-		validateNilField(fieldsConfig.Reporter, "Reporter"),
-		validateStringParameterNotEmpty(fieldsConfig.Reporter, "Reporter"),
-		validateNilField(fieldsConfig.IssueType, "IssueType"),
-		validateStringParameterNotEmpty(fieldsConfig.IssueType, "IssueType"),
-		validateNilField(fieldsConfig.Project, "Project"),
-		validateStringParameterNotEmpty(fieldsConfig.Project, "Project"),
-	}
-	if err := validate(rules); err != nil {
+func (c *Client) CreateIssue(fieldsConfig *FieldsConfiguration) (issue *jira.Issue, err error) {
+	err = c.validateFieldsConfig(fieldsConfig)
+	if err != nil {
 		return nil, err
 	}
 
@@ -126,34 +128,5 @@ func (c *Client) GetAllIssues(searchString string, maxResults int) ([]jira.Issue
 		if last >= total {
 			return issues, nil
 		}
-	}
-}
-
-type validateRule func() error
-
-func validate(rules []validateRule) error {
-	for _, rule := range rules {
-		if err := rule(); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func validateNilField(field interface{}, name string) validateRule {
-	return func() error {
-		if reflect.ValueOf(field).IsNil() {
-			return errors.BadRequest.UserErrorf("Missing field '%s'", name)
-		}
-		return nil
-	}
-}
-
-func validateStringParameterNotEmpty(param *string, name string) validateRule {
-	return func() error {
-		if strings.ReplaceAll(*param, " ", "") == "" {
-			return errors.BadRequest.UserErrorf("Missing field '%s'", name)
-		}
-		return nil
 	}
 }
