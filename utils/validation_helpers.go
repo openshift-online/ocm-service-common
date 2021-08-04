@@ -2,7 +2,6 @@ package utils
 
 import (
 	"reflect"
-	"strings"
 
 	errors "github.com/zgalor/weberr"
 )
@@ -36,15 +35,13 @@ func Validate(rules []ValidateRule) error {
 	return nil
 }
 
-func ValidateStringParameterNotEmpty(param *string, name string) ValidateRule {
+func ValidateStringFieldNotEmpty(param *string, name string) ValidateRule {
 	return func() error {
 		if param == nil {
 			return errors.BadRequest.UserErrorf("Missing field '%s'", name)
 		}
-		if ValidateNilField(param, name) == nil {
-			if strings.ReplaceAll(*param, " ", "") == "" {
-				return errors.BadRequest.UserErrorf("Field '%s' is empty", name)
-			}
+		if len(*param) == 0 {
+			return errors.BadRequest.UserErrorf("Field '%s' is empty", name)
 		}
 		return nil
 	}

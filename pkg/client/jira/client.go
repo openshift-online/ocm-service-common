@@ -16,12 +16,16 @@ import (
 // to open a Jira ticket via this code.
 
 type Client struct {
-	jiraClient   *jira.Client
+	jiraClient *jira.Client
 }
 
 func NewClient(user, pass, url string) (*Client, error) {
-	client := &Client{}
+	err := validateClientParams(user, pass, url)
+	if err != nil {
+		return nil, err
+	}
 
+	client := &Client{}
 	authTransport := jira.BasicAuthTransport{
 		Username: user,
 		Password: pass,
@@ -35,13 +39,25 @@ func NewClient(user, pass, url string) (*Client, error) {
 	return client, nil
 }
 
+func validateClientParams(user, pass, url string) error {
+	rules := []utils.ValidateRule{
+		utils.ValidateStringFieldNotEmpty(&user, "jira_user"),
+		utils.ValidateStringFieldNotEmpty(&pass, "jira_pass"),
+		utils.ValidateStringFieldNotEmpty(&url, "jira_url"),
+	}
+	if err := utils.Validate(rules); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (c *Client) validateFieldsConfig(fieldsConfig *FieldsConfiguration) error {
 	rules := []utils.ValidateRule{
 		utils.ValidateNilObject(fieldsConfig, "Fields configuration"),
-		utils.ValidateStringParameterNotEmpty(fieldsConfig.Summary, "summary"),
-		utils.ValidateStringParameterNotEmpty(fieldsConfig.Reporter, "reporter"),
-		utils.ValidateStringParameterNotEmpty(fieldsConfig.IssueType, "issue_type"),
-		utils.ValidateStringParameterNotEmpty(fieldsConfig.Project, "project"),
+		utils.ValidateStringFieldNotEmpty(fieldsConfig.Summary, "summary"),
+		utils.ValidateStringFieldNotEmpty(fieldsConfig.Reporter, "reporter"),
+		utils.ValidateStringFieldNotEmpty(fieldsConfig.IssueType, "issue_type"),
+		utils.ValidateStringFieldNotEmpty(fieldsConfig.Project, "project"),
 	}
 	if err := utils.Validate(rules); err != nil {
 		return err
@@ -101,7 +117,7 @@ func (c *Client) PostAttachment(r io.Reader, issueID *string) (attachment *[]jir
 	if r == nil || issueID == nil {
 		return nil, errors.BadRequest.Errorf("Cannot post Jira issue attachment. Missing information")
 	}
-	createdAttachment, _, err := c.jiraClient.Issue.PostAttachment(*issueID, r, "clusterResources" )
+	createdAttachment, _, err := c.jiraClient.Issue.PostAttachment(*issueID, r, "clusterResources")
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +133,7 @@ func (c *Client) GetAllIssues(searchString string, maxResults int) ([]jira.Issue
 			StartAt:    last,
 		}
 
-		chunk, resp, err :=  c.jiraClient.Issue.Search(searchString, opt)
+		chunk, resp, err := c.jiraClient.Issue.Search(searchString, opt)
 		if err != nil {
 			return nil, err
 		}
