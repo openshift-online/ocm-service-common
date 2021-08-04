@@ -16,16 +16,12 @@ import (
 // to open a Jira ticket via this code.
 
 type Client struct {
-	jiraClient *jira.Client
+	jiraClient   *jira.Client
 }
 
 func NewClient(user, pass, url string) (*Client, error) {
-	err := validateClientParams(user, pass, url)
-	if err != nil {
-		return nil, err
-	}
-
 	client := &Client{}
+
 	authTransport := jira.BasicAuthTransport{
 		Username: user,
 		Password: pass,
@@ -37,18 +33,6 @@ func NewClient(user, pass, url string) (*Client, error) {
 	}
 	client.jiraClient = jiraClient
 	return client, nil
-}
-
-func validateClientParams(user, pass, url string) error {
-	rules := []utils.ValidateRule{
-		utils.ValidateStringParameterNotEmpty(&user, "jira_user"),
-		utils.ValidateStringParameterNotEmpty(&pass, "jira_pass"),
-		utils.ValidateStringParameterNotEmpty(&url, "jira_url"),
-	}
-	if err := utils.Validate(rules); err != nil {
-		return err
-	}
-	return nil
 }
 
 func (c *Client) validateFieldsConfig(fieldsConfig *FieldsConfiguration) error {
@@ -117,7 +101,7 @@ func (c *Client) PostAttachment(r io.Reader, issueID *string) (attachment *[]jir
 	if r == nil || issueID == nil {
 		return nil, errors.BadRequest.Errorf("Cannot post Jira issue attachment. Missing information")
 	}
-	createdAttachment, _, err := c.jiraClient.Issue.PostAttachment(*issueID, r, "clusterResources")
+	createdAttachment, _, err := c.jiraClient.Issue.PostAttachment(*issueID, r, "clusterResources" )
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +117,7 @@ func (c *Client) GetAllIssues(searchString string, maxResults int) ([]jira.Issue
 			StartAt:    last,
 		}
 
-		chunk, resp, err := c.jiraClient.Issue.Search(searchString, opt)
+		chunk, resp, err :=  c.jiraClient.Issue.Search(searchString, opt)
 		if err != nil {
 			return nil, err
 		}

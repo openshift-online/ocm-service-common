@@ -41,7 +41,7 @@ func ValidateStringParameterNotEmpty(param *string, name string) ValidateRule {
 		if param == nil {
 			return errors.BadRequest.UserErrorf("Missing field '%s'", name)
 		}
-		if ValidateNilField(param, name) != nil {
+		if ValidateNilField(param, name) == nil {
 			if strings.ReplaceAll(*param, " ", "") == "" {
 				return errors.BadRequest.UserErrorf("Field '%s' is empty", name)
 			}
