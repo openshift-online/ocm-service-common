@@ -18,19 +18,37 @@ const (
 
 var _ = Describe("Jira issue", func() {
 
+	It("Missing client user", func() {
+		_, err := NewClient("", "pass", testURL)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("Field 'jira_user' is empty"))
+	})
+
+	It("Missing client password", func() {
+		_, err := NewClient("user", "", testURL)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("Field 'jira_pass' is empty"))
+	})
+
+	It("Missing client url", func() {
+		_, err := NewClient("user", "pass", "")
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("Field 'jira_url' is empty"))
+	})
+
 	It("Missing summary", func() {
-			jiraClient, err := NewClient("user", "pass", testURL)
-			Expect(err).NotTo(HaveOccurred())
+		jiraClient, err := NewClient("user", "pass", testURL)
+		Expect(err).NotTo(HaveOccurred())
 
-			fieldsConfigurattion := &FieldsConfiguration{
-				Project:   GetStringAddress(project),
-				Reporter:  GetStringAddress(reporter),
-				IssueType: GetStringAddress(issueType),
-			}
+		fieldsConfigurattion := &FieldsConfiguration{
+			Project:   GetStringAddress(project),
+			Reporter:  GetStringAddress(reporter),
+			IssueType: GetStringAddress(issueType),
+		}
 
-			err = jiraClient.validateFieldsConfig(fieldsConfigurattion)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("Missing field 'summary'"))
+		err = jiraClient.validateFieldsConfig(fieldsConfigurattion)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("Missing field 'summary'"))
 	})
 
 	It("Missing project", func() {
@@ -68,9 +86,9 @@ var _ = Describe("Jira issue", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		fieldsConfigurattion := &FieldsConfiguration{
-			Summary:   GetStringAddress(fmt.Sprintf(summary, "1234")),
-			Project:   GetStringAddress(project),
-			Reporter:  GetStringAddress(reporter),
+			Summary:  GetStringAddress(fmt.Sprintf(summary, "1234")),
+			Project:  GetStringAddress(project),
+			Reporter: GetStringAddress(reporter),
 		}
 
 		err = jiraClient.validateFieldsConfig(fieldsConfigurattion)
