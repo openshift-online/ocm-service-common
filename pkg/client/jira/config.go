@@ -7,6 +7,6 @@ type FieldsConfiguration struct {
 	Reporter    *string
 	Assignee    *string
 	IssueType   *string
-	Label       *string
+	Labels      []*string
+	Components  []*string
 }
-

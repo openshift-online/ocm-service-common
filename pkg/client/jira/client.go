@@ -1,9 +1,7 @@
 package jira
 
 import (
-	"fmt"
 	"io"
-	"reflect"
 
 	"github.com/andygrunwald/go-jira"
 	errors "github.com/zgalor/weberr"
@@ -97,19 +95,35 @@ func (c *Client) CreateIssue(fieldsConfig *FieldsConfiguration) (issue *jira.Iss
 
 func (c *Client) addIssueFields(newIssue jira.Issue, fieldsConfig *FieldsConfiguration) {
 	// assignee
-	if !reflect.ValueOf(fieldsConfig.Assignee).IsNil() && *fieldsConfig.Assignee != "" {
-		newIssue.Fields.Assignee = &jira.User{
-			Name: *fieldsConfig.Assignee,
+	if fieldsConfig != nil {
+		// assignee
+		if fieldsConfig.Assignee != nil && *fieldsConfig.Assignee != "" {
+			newIssue.Fields.Assignee = &jira.User{
+				Name: *fieldsConfig.Assignee,
+			}
 		}
-	}
-	// description
-	if !reflect.ValueOf(fieldsConfig.Description).IsNil() && *fieldsConfig.Description != "" {
-		newIssue.Fields.Description = *fieldsConfig.Description
-	}
 
-	// label
-	if !reflect.ValueOf(fieldsConfig.Label).IsNil() && *fieldsConfig.Label != "" {
-		newIssue.Fields.Labels = append(newIssue.Fields.Labels, fmt.Sprintf("%s", *fieldsConfig.Label))
+		// description
+		if fieldsConfig.Description != nil && *fieldsConfig.Description != "" {
+			newIssue.Fields.Description = *fieldsConfig.Description
+		}
+
+		// label/s
+		for _, label := range fieldsConfig.Labels {
+			if label != nil && *label != "" {
+				newIssue.Fields.Labels = append(newIssue.Fields.Labels, *label)
+			}
+		}
+
+		// componenet/s
+		for _, component := range fieldsConfig.Components {
+			if component != nil && *component != "" {
+				issueComponent := &jira.Component{
+					Name: *component,
+				}
+				newIssue.Fields.Components = append(newIssue.Fields.Components, issueComponent)
+			}
+		}
 	}
 }
 
