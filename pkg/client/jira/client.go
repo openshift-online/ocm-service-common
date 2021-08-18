@@ -127,11 +127,11 @@ func (c *Client) addIssueFields(newIssue jira.Issue, fieldsConfig *FieldsConfigu
 	}
 }
 
-func (c *Client) PostAttachment(r io.Reader, issueID *string) (attachment *[]jira.Attachment, err error) {
+func (c *Client) PostAttachment(issueID *string, r io.Reader, name string) (attachment *[]jira.Attachment, err error) {
 	if r == nil || issueID == nil {
 		return nil, errors.BadRequest.Errorf("Cannot post Jira issue attachment. Missing information")
 	}
-	createdAttachment, _, err := c.jiraClient.Issue.PostAttachment(*issueID, r, "clusterResources")
+	createdAttachment, _, err := c.jiraClient.Issue.PostAttachment(*issueID, r, name)
 	if err != nil {
 		return nil, err
 	}
