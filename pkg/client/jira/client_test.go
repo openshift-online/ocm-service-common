@@ -149,31 +149,31 @@ var _ = Describe("Jira issue", func() {
 			fieldsConfigLabels = append(fieldsConfigLabels, &str)
 		}
 
-		fieldsConfigurattion := &FieldsConfiguration{
+		fieldsConfiguration := &FieldsConfiguration{
 			Summary:   GetStringAddress(fmt.Sprintf(summary, "1234")),
 			Project:   GetStringAddress(project),
 			Reporter:  GetStringAddress(reporter),
 			IssueType: GetStringAddress(issueType),
 			Labels:    fieldsConfigLabels,
 		}
-		err = jiraClient.validateFieldsConfig(fieldsConfigurattion)
+		err = jiraClient.validateFieldsConfig(fieldsConfiguration)
 		Expect(err).ToNot(HaveOccurred())
 
 		newIssue := jira.Issue{
 			Fields: &jira.IssueFields{
-				Summary: *fieldsConfigurattion.Summary,
+				Summary: *fieldsConfiguration.Summary,
 				Reporter: &jira.User{
-					Name: *fieldsConfigurattion.Reporter,
+					Name: *fieldsConfiguration.Reporter,
 				},
 				Type: jira.IssueType{
-					Name: *fieldsConfigurattion.IssueType,
+					Name: *fieldsConfiguration.IssueType,
 				},
 				Project: jira.Project{
-					Key: *fieldsConfigurattion.Project,
+					Key: *fieldsConfiguration.Project,
 				},
 			},
 		}
-		jiraClient.addIssueFields(newIssue, fieldsConfigurattion)
+		jiraClient.addIssueFields(newIssue, fieldsConfiguration)
 		Expect(newIssue.Fields.Labels).NotTo(BeEmpty())
 		Expect(newIssue.Fields.Labels).To(ConsistOf(labels))
 	})
