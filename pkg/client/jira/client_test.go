@@ -177,6 +177,18 @@ var _ = Describe("Jira issue", func() {
 		Expect(newIssue.Fields.Labels).NotTo(BeEmpty())
 		Expect(newIssue.Fields.Labels).To(ConsistOf(labels))
 	})
+	It("Create client with empty token", func() {
+		_, err := NewClientWithToken("", testURL)
+		Expect(err).To(HaveOccurred())
+	})
+	It("Create client with token but empty URL", func() {
+		_, err := NewClientWithToken("abc", "")
+		Expect(err).To(HaveOccurred())
+	})
+	It("Create client with token and URL", func() {
+		_, err := NewClientWithToken("abc", testURL)
+		Expect(err).ToNot(HaveOccurred())
+	})
 })
 
 func GetStringAddress(str string) *string {
