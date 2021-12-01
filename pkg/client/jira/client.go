@@ -64,7 +64,7 @@ type Parameter struct {
 }
 
 func validateParams(params ...Parameter) error {
-	rules := make([]utils.ValidateRule, len(params))
+	rules := make([]utils.ValidateRule, 0)
 	for _, param := range params {
 		rule := utils.ValidateStringFieldNotEmpty(&param.Value, param.Name)
 		rules = append(rules, rule)
