@@ -20,9 +20,9 @@ type Client struct {
 
 func NewClient(user, pass, url string) (*Client, error) {
 	err := validateParams(
-		Parameter{user, "jira_user"},
-		Parameter{pass, "jira_pass"},
-		Parameter{url, "jira_url"})
+		Parameter{"jira_user", user},
+		Parameter{"jira_pass", pass},
+		Parameter{"jira_url", url})
 	if err != nil {
 		return nil, err
 	}
@@ -37,8 +37,8 @@ func NewClient(user, pass, url string) (*Client, error) {
 
 func NewClientWithToken(token, url string) (*Client, error) {
 	err := validateParams(
-		Parameter{token, "jira_token"},
-		Parameter{url, "jira_url"})
+		Parameter{"jira_token", token},
+		Parameter{"jira_url", url})
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +66,8 @@ type Parameter struct {
 func validateParams(params ...Parameter) error {
 	rules := make([]utils.ValidateRule, 0)
 	for _, param := range params {
-		rule := utils.ValidateStringFieldNotEmpty(&param.Value, param.Name)
+		value := param.Value
+		rule := utils.ValidateStringFieldNotEmpty(&value, param.Name)
 		rules = append(rules, rule)
 	}
 	if err := utils.Validate(rules); err != nil {
