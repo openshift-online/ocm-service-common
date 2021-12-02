@@ -2,6 +2,7 @@ package jira
 
 import (
 	"io"
+	"net/http"
 
 	"github.com/andygrunwald/go-jira"
 	errors "github.com/zgalor/weberr"
@@ -18,30 +19,56 @@ type Client struct {
 }
 
 func NewClient(user, pass, url string) (*Client, error) {
-	err := validateClientParams(user, pass, url)
+	err := validateParams(
+		Parameter{"jira_user", user},
+		Parameter{"jira_pass", pass},
+		Parameter{"jira_url", url})
 	if err != nil {
 		return nil, err
 	}
-
-	client := &Client{}
-	authTransport := jira.BasicAuthTransport{
+	transport := jira.BasicAuthTransport{
 		Username: user,
 		Password: pass,
 	}
+	return newClient(func() *http.Client {
+		return transport.Client()
+	}, url)
+}
 
-	jiraClient, err := jira.NewClient(authTransport.Client(), url)
+func NewClientWithToken(token, url string) (*Client, error) {
+	err := validateParams(
+		Parameter{"jira_token", token},
+		Parameter{"jira_url", url})
 	if err != nil {
 		return nil, err
 	}
-	client.jiraClient = jiraClient
-	return client, nil
+	transport := TokenTransport{token: token}
+	return newClient(func() *http.Client {
+		return transport.Client()
+	}, url)
 }
 
-func validateClientParams(user, pass, url string) error {
-	rules := []utils.ValidateRule{
-		utils.ValidateStringFieldNotEmpty(&user, "jira_user"),
-		utils.ValidateStringFieldNotEmpty(&pass, "jira_pass"),
-		utils.ValidateStringFieldNotEmpty(&url, "jira_url"),
+type ClientProvider = func() *http.Client
+
+func newClient(clientProvider ClientProvider, url string) (*Client, error) {
+	jiraClient, err := jira.NewClient(clientProvider(), url)
+	if err != nil {
+		return nil, err
+	}
+	return &Client{jiraClient: jiraClient}, nil
+}
+
+type Parameter struct {
+	Name  string
+	Value string
+}
+
+func validateParams(params ...Parameter) error {
+	rules := make([]utils.ValidateRule, 0)
+	for _, param := range params {
+		value := param.Value
+		rule := utils.ValidateStringFieldNotEmpty(&value, param.Name)
+		rules = append(rules, rule)
 	}
 	if err := utils.Validate(rules); err != nil {
 		return err
