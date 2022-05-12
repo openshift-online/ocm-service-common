@@ -90,6 +90,10 @@ func (c *Client) validateFieldsConfig(fieldsConfig *FieldsConfiguration) error {
 	return nil
 }
 
+func (c *Client) GetProjectList() (*jira.ProjectList, *jira.Response, error) {
+	return c.jiraClient.Project.GetList()
+}
+
 func (c *Client) CreateIssue(fieldsConfig *FieldsConfiguration) (issue *jira.Issue, err error) {
 	err = c.validateFieldsConfig(fieldsConfig)
 	if err != nil {
