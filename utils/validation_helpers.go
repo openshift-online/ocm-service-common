@@ -46,3 +46,21 @@ func ValidateStringFieldNotEmpty(param *string, name string) ValidateRule {
 		return nil
 	}
 }
+
+func Contains[T comparable](slice []T, element T) bool {
+	for _, sliceElement := range slice {
+		if sliceElement == element {
+			return true
+		}
+	}
+
+	return false
+}
+
+func Transform[T any, Y any](elements []T, transformationFunc func(T) Y) []Y {
+	results := make([]Y, 0)
+	for _, elem := range elements {
+		results = append(results, transformationFunc(elem))
+	}
+	return results
+}
