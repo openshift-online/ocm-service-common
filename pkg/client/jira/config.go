@@ -9,4 +9,5 @@ type FieldsConfiguration struct {
 	IssueType   *string
 	Labels      []*string
 	Components  []*string
+	Unknowns    map[string]interface{}
 }
