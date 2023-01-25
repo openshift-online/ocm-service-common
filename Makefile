@@ -11,6 +11,7 @@ ifndef GOPATH
 endif
 .PHONY: check-gopath
 
+export ACK_GINKGO_DEPRECATIONS = 2.7.0
 .PHONY: test
 test:
 	ginkgo $(ginkgo_flags) -r pkg/client/jira
