@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/golang/glog"
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	sdk "github.com/openshift-online/ocm-sdk-go"
 	errors "github.com/zgalor/weberr"
