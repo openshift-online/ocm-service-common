@@ -6,7 +6,6 @@ require (
 	github.com/andygrunwald/go-jira v1.13.0
 	github.com/golang/glog v1.0.0
 	github.com/google/uuid v1.3.0
-	github.com/onsi/ginkgo v1.16.4
 	github.com/onsi/ginkgo/v2 v2.1.4
 	github.com/onsi/gomega v1.19.0
 	github.com/openshift-online/ocm-sdk-go v0.1.269
