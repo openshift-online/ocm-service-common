@@ -12,13 +12,14 @@ import (
 )
 
 const (
-	testURL   = "http://example.com/api/"
-	issueType = "Incident"
-	project   = "OHSS"
-	reporter  = "ocm.support"
-	summary   = "\"OCM cluster in error detected: cluster id '%s'\""
-	component = "Red Hat OpenShift Cluster Manager"
-	labels    = "no_qe"
+	testURL     = "http://example.com/api/"
+	issueType   = "Incident"
+	project     = "OHSS"
+	reporter    = "ocm.support"
+	summary     = "\"OCM cluster in error detected: cluster id '%s'\""
+	component   = "Red Hat OpenShift Cluster Manager"
+	labels      = "no_qe"
+	customField = "customfield_12319040"
 )
 
 var _ = Describe("Jira issue", func() {
@@ -188,6 +189,80 @@ var _ = Describe("Jira issue", func() {
 	It("Create client with token and URL", func() {
 		_, err := NewClientWithToken("abc", testURL)
 		Expect(err).ToNot(HaveOccurred())
+	})
+
+	When("Unknown fields are present in field configuration", func() {
+		It("Should create the jira fields with unknowns", func() {
+			jiraClient, err := NewClient("user", "pass", testURL)
+			Expect(err).NotTo(HaveOccurred())
+
+			fieldsConfiguration := &FieldsConfiguration{
+				Summary:   GetStringAddress(fmt.Sprintf(summary, "1234")),
+				Project:   GetStringAddress(project),
+				Reporter:  GetStringAddress(reporter),
+				IssueType: GetStringAddress(issueType),
+				Unknowns: map[string]interface{}{
+					customField: "test",
+				},
+			}
+			err = jiraClient.validateFieldsConfig(fieldsConfiguration)
+			Expect(err).ToNot(HaveOccurred())
+
+			newIssue := jira.Issue{
+				Fields: &jira.IssueFields{
+					Summary: *fieldsConfiguration.Summary,
+					Reporter: &jira.User{
+						Name: *fieldsConfiguration.Reporter,
+					},
+					Type: jira.IssueType{
+						Name: *fieldsConfiguration.IssueType,
+					},
+					Project: jira.Project{
+						Key: *fieldsConfiguration.Project,
+					},
+					Unknowns: fieldsConfiguration.Unknowns,
+				},
+			}
+			jiraClient.addIssueFields(newIssue, fieldsConfiguration)
+			Expect(newIssue.Fields.Unknowns).NotTo(BeEmpty())
+			unknownValue, exists := newIssue.Fields.Unknowns[customField]
+			Expect(exists).To(BeTrue())
+			Expect(unknownValue).To(Equal("test"))
+		})
+	})
+
+	When("Unknown fields are not present in field configuration", func() {
+		It("Should have an issue with no unknowns", func() {
+			jiraClient, err := NewClient("user", "pass", testURL)
+			Expect(err).NotTo(HaveOccurred())
+
+			fieldsConfiguration := &FieldsConfiguration{
+				Summary:   GetStringAddress(fmt.Sprintf(summary, "1234")),
+				Project:   GetStringAddress(project),
+				Reporter:  GetStringAddress(reporter),
+				IssueType: GetStringAddress(issueType),
+			}
+			err = jiraClient.validateFieldsConfig(fieldsConfiguration)
+			Expect(err).ToNot(HaveOccurred())
+
+			newIssue := jira.Issue{
+				Fields: &jira.IssueFields{
+					Summary: *fieldsConfiguration.Summary,
+					Reporter: &jira.User{
+						Name: *fieldsConfiguration.Reporter,
+					},
+					Type: jira.IssueType{
+						Name: *fieldsConfiguration.IssueType,
+					},
+					Project: jira.Project{
+						Key: *fieldsConfiguration.Project,
+					},
+					Unknowns: fieldsConfiguration.Unknowns,
+				},
+			}
+			jiraClient.addIssueFields(newIssue, fieldsConfiguration)
+			Expect(newIssue.Fields.Unknowns).To(BeEmpty())
+		})
 	})
 })
 
