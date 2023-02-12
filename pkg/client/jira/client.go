@@ -117,9 +117,13 @@ func (c *Client) CreateIssue(fieldsConfig *FieldsConfiguration) (issue *jira.Iss
 
 	c.addIssueFields(newIssue, fieldsConfig)
 
-	issue, _, err = c.jiraClient.Issue.Create(&newIssue)
+	issue, resp, err := c.jiraClient.Issue.Create(&newIssue)
 	if err != nil {
-		return nil, err
+		payload, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			payload = []byte("N/A")
+		}
+		return nil, errors.Wrapf(err, "Got response: %v", string(payload))
 	}
 	return issue, nil
 }
