@@ -543,9 +543,13 @@ func createRegular(datasource Datasource, title string, rowNum int, panelId int,
 	}
 
 	if exprErrors3 != nil {
+		var legendFormat = "5xx and timeout - {{deployment_ring}}"
+		if strings.Contains(*exprErrors3, "4..|0") {
+			legendFormat = "4xx - {{deployment_ring}}"
+		}
 		panel.Panels[2].Targets = append(panel.Panels[2].Targets, Target{
 			Expr:         *exprErrors3,
-			LegendFormat: toPtr("5xx and timeout - {{deployment_ring}}"),
+			LegendFormat: &legendFormat,
 			RefId:        "B",
 		})
 	}
@@ -646,7 +650,13 @@ sum(increase(api_inbound_request_duration_count{namespace="$namespace",service=~
 	var exprError3 *string
 	if strings.Contains(path, exception.Path) {
 		exception.Errors3 = toPtr(strings.Replace(*exception.Errors3, "grafana.service", service, -1))
-		exprError3 = toPtr(fmt.Sprintf(*exception.Errors3, path, path))
+		exprError3 = toPtr(fmt.Sprintf(*exception.Errors3, path, exception.Method, path, exception.Method))
+	} else {
+		exprError3 = toPtr(fmt.Sprintf(`
+sum (rate(api_inbound_request_count{namespace="$namespace",service=~"%s",path="%s",code=~"4..|0",service_account=~"$account"}[$__range]))
+/
+sum (rate(api_inbound_request_count{namespace="$namespace",service=~"%s",path="%s",service_account=~"$account"}[$__range]))
+`, service, path, service, path))
 	}
 
 	return exprAvailability, exprRequests, exprErrors1, exprErrors2, exprError3, exprDuration, exprLatency
