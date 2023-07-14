@@ -161,7 +161,7 @@ func (c *Client) addIssueFields(newIssue jira.Issue, fieldsConfig *FieldsConfigu
 		}
 
 		// custom unknown fields
-		var unknowns map[string]interface{}
+		unknowns := make(map[string]interface{})
 		for unknownKey, unknownValue := range fieldsConfig.Unknowns {
 			knownKey := getUnknownCustomField(unknownKey)
 			if knownKey == "" {
