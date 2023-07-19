@@ -2,15 +2,13 @@ package middleware
 
 import (
 	"encoding/json"
-	"errors"
 	"strings"
 
 	jwt "github.com/golang-jwt/jwt/v4"
 )
 
 const (
-	OCMAccessScope = "api.ocm"
-	OCMAudience    = "ocm-services"
+	OCMIdentifier = "api.ocm"
 )
 
 type AccessRules struct {
@@ -23,14 +21,20 @@ type OrganizationInfo struct {
 	Name          *string `json:"name"` // FedRamp: Keycloak-only
 }
 
+type AudienceRaw interface{}
+
+// These standard claims are driven by the api.ocm access scope.
+// The api.ocm access scope is active on the cloud-services client and can be manually enabled by SSO on central service accounts.
+// The only exception here is organization service account claims, as organization service accounts cannot leverage custom scopes.
 type OCMStandardClaims struct {
-	Audience         *string          `json:"aud"`
+	Audience         []string
+	AudienceRaw      AudienceRaw      `json:"aud,omitempty"` // aud can be a string "foo" or an array of strings ["foo", "bar"]
 	Subject          *string          `json:"sub"`
-	IdentityProvider *string          `json:"idp"`
+	IdentityProvider *string          `json:"idp"` // Only present on login from Red Hat SSO
 	Issuer           *string          `json:"iss"`
 	Locale           *string          `json:"locale"`
 	Scope            *string          `json:"scope"`
-	ClientID         *string          `json:"client_id"`
+	ClientID         *string          `json:"clientId"` // Alternatively mapped from "client_id" for FedRAMP
 	Email            *string          `json:"email"`
 	EmailVerified    bool             `json:"email_verified"`
 	Username         *string          `json:"preferred_username"`
@@ -38,35 +42,96 @@ type OCMStandardClaims struct {
 	FirstName        *string          `json:"given_name"`
 	LastName         *string          `json:"family_name"`
 	RHITUserID       *string          `json:"user_id"`
-	RHCreatorID      *string          `json:"rh-user-id"` // Org Service Account Creator User ID
 	Access           AccessRules      `json:"realm_access"`
 	Impersonated     bool             `json:"impersonated"`
-	CognitoUsername  *string          `json:"username"`       // FedRamp: Cognito-only (non-oidc-standard: use preferred_username in all other cases)
-	Groups           []string         `json:"cognito:groups"` // FedRamp: Cognito-only
+	CognitoUsername  *string          `json:"username"`       // FedRAMP: Cognito-only (non-oidc-standard: use preferred_username in all other cases)
+	Groups           []string         `json:"cognito:groups"` // FedRAMP: Cognito-only
+
+	// Organizational Service Accounts-only
+	RHCreatorID *string `json:"rh-user-id"` // Org Service Account Creator User ID
+	RHOrgID     *string `json:"rh-org-id"`  // Org Service Account Org ID
 }
 
-// Commercial-only: Validates the scope/audience claims
-func (a *OCMStandardClaims) CommercialIsValid() (bool, error) {
-	if !strings.Contains(*a.Scope, OCMAccessScope) {
-		return false, errors.New("invalid scope")
+func (a *OCMStandardClaims) UnmarshalJSON(b []byte) error {
+
+	type TmpClaims OCMStandardClaims
+	var tmpClaims TmpClaims
+
+	err := json.Unmarshal(b, &tmpClaims)
+	if err != nil {
+		return err
 	}
-	if !strings.Contains(*a.Audience, OCMAudience) {
-		return false, errors.New("invalid audience")
+
+	// Map AudienceRaw to Audience based on type
+	switch aud := tmpClaims.AudienceRaw.(type) {
+	case string:
+		tmpClaims.Audience = []string{aud}
+	case []interface{}:
+		tmpClaims.Audience = make([]string, len(aud))
+		for i, v := range aud {
+			tmpClaims.Audience[i] = v.(string)
+		}
+	default:
+		tmpClaims.Audience = nil
 	}
-	return true, nil
+
+	*a = OCMStandardClaims(tmpClaims)
+
+	return nil
 }
 
 func (a *OCMStandardClaims) UnmarshalFromToken(token *jwt.Token) error {
-	raw, err := json.Marshal(token.Claims)
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return jwt.NewValidationError("cannot convert claims", jwt.ValidationErrorClaimsInvalid)
+	}
+
+	// Fallback to mapping client_id to clientId
+	// This currently differs between commercial (clientId) and FedRAMP (client_id)
+	if claims["clientId"] == nil && claims["client_id"] != nil {
+		claims["clientId"] = claims["client_id"]
+	}
+
+	raw, err := json.Marshal(claims)
 	if err != nil {
 		return err
 	}
 	return json.Unmarshal(raw, &a)
 }
 
-func JWTContainsOCMAccessScope(claims jwt.MapClaims) bool {
-	if strings.Contains(claims["scope"].(string), OCMAccessScope) {
+// VerifyOCMClaims compares Scope and Audience claims to ensure they contain "api.ocm", this should be called before
+// mapping claims to the OCMStandardClaims struct.
+func VerifyOCMClaims(claims jwt.MapClaims) bool {
+	iss, issExists := claims["iss"]
+	_, audExists := claims["aud"]
+	scope, scopeExists := claims["scope"]
+	clientID, clientIDExists := claims["clientId"]
+
+	isCognito := issExists && iss != nil && strings.Contains(iss.(string), "cognito")
+
+	rhOrgId, rhOrgIdExists := claims["rh-org-id"]
+	rhUserId, rhUserIdExists := claims["rh-user-id"]
+	isOrganizationServiceAccount := rhOrgIdExists && rhOrgId != nil && rhUserIdExists && rhUserId != nil
+
+	// Cognito and Organizational Service Accounts do not support custom scopes or claims - return verified by default
+	if isCognito || isOrganizationServiceAccount {
 		return true
 	}
-	return false
+
+	if !scopeExists {
+		return false
+	}
+
+	if clientIDExists && clientID != nil {
+		// If client_id is present this is a service account which could contain a hard-coded custom audience
+		// Thus, we only care about validating the scope
+		return strings.Contains(scope.(string), OCMIdentifier)
+	}
+
+	if !audExists {
+		return false
+	}
+
+	return strings.Contains(scope.(string), OCMIdentifier) &&
+		claims.VerifyAudience(OCMIdentifier, true)
 }
