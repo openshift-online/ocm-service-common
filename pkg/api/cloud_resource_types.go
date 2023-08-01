@@ -2,8 +2,6 @@ package api
 
 import (
 	"time"
-
-	"gorm.io/gorm"
 )
 
 type ResourceCategory string
@@ -22,7 +20,6 @@ type Meta struct {
 	ID        string
 	CreatedAt time.Time
 	UpdatedAt time.Time
-	DeletedAt gorm.DeletedAt `gorm:"index"`
 }
 
 // CloudResource struct for CloudResource
