@@ -49,7 +49,6 @@ type OCMStandardClaims struct {
 
 	// Organizational Service Accounts-only
 	RHCreatorID *string `json:"rh-user-id"` // Org Service Account Creator User ID
-	RHOrgID     *string `json:"rh-org-id"`  // Org Service Account Org ID
 }
 
 func (a *OCMStandardClaims) UnmarshalJSON(b []byte) error {
@@ -109,12 +108,8 @@ func VerifyOCMClaims(claims jwt.MapClaims) bool {
 
 	isCognito := issExists && iss != nil && strings.Contains(iss.(string), "cognito")
 
-	rhOrgId, rhOrgIdExists := claims["rh-org-id"]
-	rhUserId, rhUserIdExists := claims["rh-user-id"]
-	isOrganizationServiceAccount := rhOrgIdExists && rhOrgId != nil && rhUserIdExists && rhUserId != nil
-
-	// Cognito and Organizational Service Accounts do not support custom scopes or claims - return verified by default
-	if isCognito || isOrganizationServiceAccount {
+	// Cognito does not support custom scopes or claims - return verified by default
+	if isCognito {
 		return true
 	}
 
