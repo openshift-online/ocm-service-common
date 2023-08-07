@@ -44,12 +44,16 @@ var CommercialServiceAccountValidClaims = jwt.MapClaims{
 	"preferred_username": "service-account-foo",
 }
 var CommercialOrgServiceAccountValidClaims = jwt.MapClaims{
-	"sub":                "foo-bar-uuid",
-	"iss":                "https://sso.stage.redhat.com/auth/realms/redhat-external",
-	"scope":              "",
-	"clientId":           "service-account-foo",
-	"rh-user-id":         "12345678",
-	"rh-org-id":          "12345678",
+	"aud":            OCMIdentifier,
+	"sub":            "foo-bar-uuid",
+	"iss":            "https://sso.stage.redhat.com/auth/realms/redhat-external",
+	"scope":          OCMIdentifier,
+	"email_verified": false,
+	"clientId":       "service-account-foo",
+	"rh-user-id":     "12345678",
+	"organization": map[string]interface{}{
+		"id": "12345678",
+	},
 	"preferred_username": "service-account-foo",
 }
 var CognitoFedRampValidClaims = jwt.MapClaims{
@@ -243,12 +247,27 @@ func TestCommercialOCMStandardClaimsValid_OrgServiceAccount(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred())
 
 	Expect(VerifyOCMClaims(claims)).To(BeTrue())
-	Expect(ocmStandardClaims.Audience).To(BeEmpty())
+	Expect(ocmStandardClaims.Audience[0]).To(Equal(claims["aud"]))
 	Expect(*ocmStandardClaims.Subject).To(Equal(claims["sub"]))
 	Expect(*ocmStandardClaims.Issuer).To(Equal(claims["iss"]))
 	Expect(*ocmStandardClaims.Scope).To(Equal(claims["scope"]))
+	Expect(*&ocmStandardClaims.EmailVerified).To(Equal(claims["email_verified"]))
 	Expect(*ocmStandardClaims.Username).To(Equal(claims["preferred_username"]))
 	Expect(*ocmStandardClaims.ClientID).To(Equal(claims["clientId"]))
-	Expect(*ocmStandardClaims.RHOrgID).To(Equal(claims["rh-org-id"]))
+	Expect(*ocmStandardClaims.Organization.ID).To(Equal(claims["organization"].(map[string]interface{})["id"]))
 	Expect(*ocmStandardClaims.RHCreatorID).To(Equal(claims["rh-user-id"]))
+}
+
+func TestCommercialOCMStandardClaimsInvalid_OrgServiceAccount(t *testing.T) {
+	RegisterTestingT(t)
+
+	claims := copyClaims(CommercialOrgServiceAccountValidClaims)
+	claims["scope"] = ""
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	ocmStandardClaims := OCMStandardClaims{}
+	err := ocmStandardClaims.UnmarshalFromToken(token)
+	Expect(err).NotTo(HaveOccurred())
+
+	Expect(VerifyOCMClaims(claims)).To(BeFalse())
 }
