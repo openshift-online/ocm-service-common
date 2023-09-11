@@ -18,11 +18,9 @@ import (
 // OCMLogger interface should not expose any implementation details like zerolog.Level for example
 type OCMLogger interface {
 	Err(err error) OCMLogger
-	// Extra adds a key-value pair to "extra" hash, where `value` has a `built-in` type
+	// Extra stores a key-value pair in a map; entry with the same key will be overwritten
+	// All simple (non-struct, non-slice, non-map etc.) values will be also send to sentry/glitchtip as `tags`
 	Extra(key string, value any) OCMLogger
-	// ExtraDeepReflect creates a `key` hash, and adds to it a `value.field-name`-`value.field-value` pairs,
-	// where `value` has a `struct/slice/map` type and requires a use of `reflection`
-	ExtraDeepReflect(key string, values any) OCMLogger
 	AdditionalCallLevelSkips(skip int) OCMLogger
 	ClearExtras() OCMLogger
 	Trace(args ...any)
@@ -37,14 +35,9 @@ var _ OCMLogger = &logger{}
 
 type extra map[string]any
 type tags map[string]string
-type dict struct {
-	name   string
-	values any
-}
 
 type logger struct {
 	ctx                      context.Context
-	dict                     []dict
 	extra                    extra
 	err                      error
 	additionalCallLevelSkips int
@@ -65,8 +58,11 @@ var (
 	// If we don't provide a base offset of 3, it will appear as if all logs are coming from OCMLogger.hydrateLog
 	baseCallerSkipLevel = 3
 
-	opIDKey  = "opID"
 	trimList = []string{"pkg"}
+
+	opIDCallback      func(ctx context.Context) string
+	accountIDCallback func(ctx context.Context) string
+	txIDCallback      func(ctx context.Context) int64
 )
 
 var possibleLogLevels = []string{
@@ -115,8 +111,7 @@ func init() {
 // NewOCMLogger creates a logger and initializes it
 // This ensures that each thread will get its own logger
 func NewOCMLogger(ctx context.Context) OCMLogger {
-	return logger{
-		dict:  []dict{},
+	return &logger{
 		extra: make(extra),
 		ctx:   ctx,
 	}
@@ -139,8 +134,16 @@ func SetOutput(output io.Writer) {
 	rootLogger = rootLogger.Output(output)
 }
 
-func SetOpIDKey(key string) {
-	opIDKey = key
+func SetOpIDCallback(getOpId func(ctx context.Context) string) {
+	opIDCallback = getOpId
+}
+
+func SetAccountIDCallback(getAccountId func(ctx context.Context) string) {
+	accountIDCallback = getAccountId
+}
+
+func SetTxIDCallback(getTxId func(ctx context.Context) int64) {
+	txIDCallback = getTxId
 }
 
 func SetTrimList(trims []string) {
@@ -167,61 +170,53 @@ func ErrorEnabled() bool {
 	return logLevelEnabled(zerolog.ErrorLevel)
 }
 
-func (l logger) Err(err error) OCMLogger {
+func (l *logger) Err(err error) OCMLogger {
 	l.err = err
 	return l
 }
 
-func (l logger) ExtraDeepReflect(name string, values any) OCMLogger {
-	l.dict = append(l.dict, dict{
-		name:   name,
-		values: values,
-	})
-	return l
-}
-
 // AdditionalCallLevelSkips - allows to skip additional frames when logging, useful for wrapping loggers like OcmSdkLogWrapper
-func (l logger) AdditionalCallLevelSkips(skip int) OCMLogger {
+func (l *logger) AdditionalCallLevelSkips(skip int) OCMLogger {
 	l.additionalCallLevelSkips = skip
 	return l
 }
 
-func (l logger) Extra(key string, value any) OCMLogger {
+func (l *logger) Extra(key string, value any) OCMLogger {
 	l.extra[key] = value
 	return l
 }
 
-func (l logger) ClearExtras() OCMLogger {
+func (l *logger) ClearExtras() OCMLogger {
 	l.extra = make(extra)
 	return l
 }
 
-func (l logger) Info(args ...any) {
+func (l *logger) Info(args ...any) {
 	l.log(zerolog.InfoLevel, sentry.LevelInfo, false, args...)
 }
 
-func (l logger) Debug(args ...any) {
+func (l *logger) Debug(args ...any) {
 	l.log(zerolog.DebugLevel, sentry.LevelDebug, false, args...)
 }
 
-func (l logger) Trace(args ...any) {
+func (l *logger) Trace(args ...any) {
 	l.log(zerolog.TraceLevel, sentry.LevelDebug, false, args...)
 }
 
-func (l logger) Warning(args ...any) {
+func (l *logger) Warning(args ...any) {
 	l.log(zerolog.WarnLevel, sentry.LevelWarning, false, args...)
 }
 
-func (l logger) Error(args ...any) {
+func (l *logger) Error(args ...any) {
 	l.log(zerolog.ErrorLevel, sentry.LevelError, true, args...)
 }
 
-func (l logger) Fatal(args ...any) {
+func (l *logger) Fatal(args ...any) {
 	l.log(zerolog.FatalLevel, sentry.LevelFatal, true, args...)
 }
 
 // Note: use the various "Depth" logging functions, so we get the correct file/line number in the logs
-func (l logger) log(level zerolog.Level, sentryLevel sentry.Level, captureSentry bool, args ...any) {
+func (l *logger) log(level zerolog.Level, sentryLevel sentry.Level, captureSentry bool, args ...any) {
 	defer func() {
 		l.err = nil
 		l.ClearExtras()
@@ -248,18 +243,45 @@ func (l logger) log(level zerolog.Level, sentryLevel sentry.Level, captureSentry
 	}
 }
 
-func (l logger) captureSentryEvent(level sentry.Level, message string, args ...any) {
-	// add extras to tags
-	tags := make(tags)
-	for k, v := range l.extra {
-		tags[k] = fmt.Sprint(v) // tags can be strings only
-	}
+func (l *logger) captureSentryEvent(level sentry.Level, message string, args ...any) {
 	event := sentry.NewEvent()
 	event.Level = level
 	event.Message = fmt.Sprintf(message, args...)
 	event.Fingerprint = []string{getMD5Hash(event.Message)}
 	event.Extra = l.extra
-	event.Tags = tags
+	// add simple extras to tags
+	event.Tags = make(tags)
+	for k, v := range l.extra {
+		switch v.(type) {
+		case string:
+			event.Tags[k] = v.(string)
+		case bool:
+			event.Tags[k] = "false"
+			if v.(bool) {
+				event.Tags[k] = "true"
+			}
+		case int:
+			i := v.(int)
+			event.Tags[k] = strconv.FormatInt(int64(i), 10)
+		case int8:
+			i := v.(int8)
+			event.Tags[k] = strconv.FormatInt(int64(i), 10)
+		case int16:
+			i := v.(int16)
+			event.Tags[k] = strconv.FormatInt(int64(i), 10)
+		case int32:
+			i := v.(int32)
+			event.Tags[k] = strconv.FormatInt(int64(i), 10)
+		case int64:
+			event.Tags[k] = strconv.FormatInt(v.(int64), 10)
+		case float32:
+			event.Tags[k] = strconv.FormatFloat(float64(v.(float32)), 'f', 2, 32)
+		case float64:
+			event.Tags[k] = strconv.FormatFloat(v.(float64), 'f', 2, 64)
+		default:
+			// skip complex types
+		}
+	}
 	if level == sentry.LevelError || level == sentry.LevelFatal {
 		sentryStack := sentry.NewStacktrace()
 		// Remove from the stack trace all the top frames that refer to this package, as those are a useless noise:
@@ -301,20 +323,28 @@ func (l logger) captureSentryEvent(level sentry.Level, message string, args ...a
 	}
 }
 
-func (l logger) hydrateLog(level zerolog.Level) *zerolog.Event {
+func (l *logger) hydrateLog(level zerolog.Level) *zerolog.Event {
 	event := rootLogger.WithLevel(level).
 		Caller(baseCallerSkipLevel + l.additionalCallLevelSkips).
 		Err(l.err)
 
-	if txid, ok := l.ctx.Value("txid").(int64); ok {
-		event.Int64("tx_id", txid)
+	if txIDCallback != nil {
+		txid := txIDCallback(l.ctx)
+		if txid != 0 {
+			event.Int64("tx_id", txid)
+		}
 	}
-	accountID := l.ctx.Value("accountID")
-	if accountID != nil && accountID != "" {
-		event.Str("accountID", fmt.Sprintf("%v", accountID))
+	if accountIDCallback != nil {
+		accountID := accountIDCallback(l.ctx)
+		if accountID != "" {
+			event.Str("accountID", accountID)
+		}
 	}
-	if opid, ok := l.ctx.Value(opIDKey).(string); ok {
-		event.Str("opid", opid)
+	if opIDCallback != nil {
+		opid := opIDCallback(l.ctx)
+		if opid != "" {
+			event.Str("opid", opid)
+		}
 	}
 
 	if len(l.extra) > 0 {
@@ -335,18 +365,17 @@ func (l logger) hydrateLog(level zerolog.Level) *zerolog.Event {
 				dict.Int32(k, typ)
 			case int64:
 				dict.Int64(k, typ)
+			case float32:
+				dict.Float32(k, typ)
+			case float64:
+				dict.Float64(k, typ)
 			default:
-				dict.Str(k, fmt.Sprint(v))
+				// Note: reflection is expensive, but we need it to add structs like `http.Request` or `http.Response` etc.
+				dict.Any(k, v)
 			}
 		}
 		event.Dict("Extra", dict)
 	}
-
-	// Would be nice to deprecate, reflection is expensive, but we need it to add structs like `http.Request` or `http.Response` etc.
-	for _, dict := range l.dict {
-		event.Interface(dict.name, dict.values)
-	}
-
 	return event
 }
 
