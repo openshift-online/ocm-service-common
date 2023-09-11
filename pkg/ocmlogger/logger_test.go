@@ -125,28 +125,23 @@ var _ = Describe("logger.Extra", Label("logger"), func() {
 
 	Context("supported context keys are added to output", func() {
 		BeforeEach(func() {
+			retrieveExtrasFromContextCallback := func(ctx context.Context) map[string]any {
+				return map[string]any{
+					"opID":      ctx.Value("opID").(string),
+					"accountID": ctx.Value("accountID").(string),
+					"tx_id":     ctx.Value("tx_id").(int64),
+				}
+			}
+			SetCallbackToRetrieveExtrasFromContext(retrieveExtrasFromContextCallback)
+
 			ctx := context.Background()
-			getOpId := func(ctx context.Context) string {
-				return ctx.Value("opID").(string)
-			}
-			SetOpIDCallback(getOpId)
-			getAccountId := func(ctx context.Context) string {
-				return ctx.Value("accountID").(string)
-			}
-			SetAccountIDCallback(getAccountId)
-			getTxId := func(ctx context.Context) int64 {
-				return ctx.Value("tx_id").(int64)
-			}
-			SetTxIDCallback(getTxId)
 			ctx = context.WithValue(ctx, "opID", "OpId1")
 			ctx = context.WithValue(ctx, "accountID", "AccountID")
 			ctx = context.WithValue(ctx, "tx_id", int64(123))
 			ulog = NewOCMLogger(ctx)
 
 			DeferCleanup(func() {
-				SetOpIDCallback(nil)
-				SetAccountIDCallback(nil)
-				SetTxIDCallback(nil)
+				SetCallbackToRetrieveExtrasFromContext(nil)
 			})
 		})
 
@@ -155,7 +150,7 @@ var _ = Describe("logger.Extra", Label("logger"), func() {
 
 			result := output.String()
 			Expect(result).To(ContainSubstring("\"level\":\"warn\""))
-			Expect(result).To(ContainSubstring("\"opid\":\"OpId1\""))
+			Expect(result).To(ContainSubstring("\"opID\":\"OpId1\""))
 			Expect(result).To(ContainSubstring("\"accountID\":\"AccountID\""))
 			Expect(result).To(ContainSubstring("\"tx_id\":123"))
 		})
