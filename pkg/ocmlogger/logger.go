@@ -60,9 +60,20 @@ var (
 
 	trimList = []string{"pkg"}
 
-	opIDCallback      func(ctx context.Context) string
-	accountIDCallback func(ctx context.Context) string
-	txIDCallback      func(ctx context.Context) int64
+	// The context in go requires key to be `exactly the same` both when setting with context.WithValue and getting with context.Value
+	// It makes library being unable to fetch those keys by itself if they are not `string` (even if its underlying type is `string`
+	// For example:
+	//
+	// 		const OpIDKey OperationIDKey = "opID"
+	// 		opID := util.NewID()
+	// 		ctx = context.WithValue(ctx, OpIDKey, opID)
+	//
+	// 		opID, ok := ctx.Value(OpIDKey).(string) -- this will work
+	// 		opID, ok := ctx.Value("opID").(string) -- this will NOT work
+	//
+	// This callback returns a map of all the keys/values from context that we want to be added to log
+	// For AMS these are: opID (operation ID), accountID, tx_id (transaction ID)
+	retrieveExtrasFromContextCallback func(ctx context.Context) map[string]any
 )
 
 var possibleLogLevels = []string{
@@ -134,16 +145,8 @@ func SetOutput(output io.Writer) {
 	rootLogger = rootLogger.Output(output)
 }
 
-func SetOpIDCallback(getOpId func(ctx context.Context) string) {
-	opIDCallback = getOpId
-}
-
-func SetAccountIDCallback(getAccountId func(ctx context.Context) string) {
-	accountIDCallback = getAccountId
-}
-
-func SetTxIDCallback(getTxId func(ctx context.Context) int64) {
-	txIDCallback = getTxId
+func SetCallbackToRetrieveExtrasFromContext(callback func(ctx context.Context) map[string]any) {
+	retrieveExtrasFromContextCallback = callback
 }
 
 func SetTrimList(trims []string) {
@@ -328,22 +331,9 @@ func (l *logger) hydrateLog(level zerolog.Level) *zerolog.Event {
 		Caller(baseCallerSkipLevel + l.additionalCallLevelSkips).
 		Err(l.err)
 
-	if txIDCallback != nil {
-		txid := txIDCallback(l.ctx)
-		if txid != 0 {
-			event.Int64("tx_id", txid)
-		}
-	}
-	if accountIDCallback != nil {
-		accountID := accountIDCallback(l.ctx)
-		if accountID != "" {
-			event.Str("accountID", accountID)
-		}
-	}
-	if opIDCallback != nil {
-		opid := opIDCallback(l.ctx)
-		if opid != "" {
-			event.Str("opid", opid)
+	if retrieveExtrasFromContextCallback != nil {
+		for k, v := range retrieveExtrasFromContextCallback(l.ctx) {
+			l.extra[k] = v
 		}
 	}
 
