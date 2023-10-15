@@ -35,15 +35,16 @@ type GrafanaMetadata struct {
 }
 
 type GrafanaConfig struct {
-	Uid           *string          `yaml:"uid" json:"uid,omitempty"`
-	Service       string           `yaml:"service" json:"service,omitempty"`
-	Title         *string          `yaml:"title" json:"title,omitempty"`
-	Style         *string          `yaml:"style" json:"style,omitempty"`
-	SchemaVersion *int             `yaml:"schemaVersion" json:"schemaVersion,omitempty"`
-	Version       *int             `yaml:"version" json:"version,omitempty"`
-	ApiVersion    string           `yaml:"apiVersion" json:"apiVersion,omitempty"`
-	Timezone      *string          `yaml:"timezone" json:"timezone,omitempty"`
-	Metadata      *GrafanaMetadata `yaml:"metadata" json:"metadata,omitempty"`
+	Uid                *string          `yaml:"uid" json:"uid,omitempty"`
+	Service            string           `yaml:"service" json:"service,omitempty"`
+	SkipServiceAccount *bool            `yaml:"service" json:"skip_service_account,omitempty"`
+	Title              *string          `yaml:"title" json:"title,omitempty"`
+	Style              *string          `yaml:"style" json:"style,omitempty"`
+	SchemaVersion      *int             `yaml:"schemaVersion" json:"schemaVersion,omitempty"`
+	Version            *int             `yaml:"version" json:"version,omitempty"`
+	ApiVersion         string           `yaml:"apiVersion" json:"apiVersion,omitempty"`
+	Timezone           *string          `yaml:"timezone" json:"timezone,omitempty"`
+	Metadata           *GrafanaMetadata `yaml:"metadata" json:"metadata,omitempty"`
 }
 
 type Requires struct {

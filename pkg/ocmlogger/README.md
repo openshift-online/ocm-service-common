@@ -26,7 +26,7 @@ ocmlog.Err(err).Fatal("error running command")
 
 ocmlog.Extra("Cluster transfer id", id).Extra("ClusterUUID", clusterUUID).Extra("Recipient", recipient).Extra("Owner", owner).Error("Cluster transfer debug - Detected Expired Cluster Transfer.")
 
-ocmlog.ExtraDeepReflect("response", response).Error("error calling service log")
+ocmlog.Extra("response", response).Error("error calling service log")
 
 // To capture output in tests
 var output bytes.Buffer
@@ -42,13 +42,7 @@ ocmlog.SetTrimList([]string{"uhc-account-manager", "pkg"})
 
 #### Notes:
 
-1. Please note the difference between `Extra` and `ExtraDeepReflect`:
-
-   * `Extra` adds a key-value pair to "extra" hash, where `value` has a `built-in` type
-   * `ExtraDeepReflect` creates a `key` hash, and adds to it a `value.field-name`-`value.field-value` pairs, where `value` has a `struct/slice/map` type and requires a use of `reflection`
-     As well all `Extra` hash will be added as `Tags` to `Sentry`
-
-2. Try to keep messages constant, use `Extra` to add extra data. This way messages will be grouped in Sentry.
+1. Try to keep messages constant, use `Extra` to add extra data and `Err` to add error code. This way messages will be grouped in Sentry. 
 
 ## Third Party Library Logging - ocm-sdk, REST, etc
 
