@@ -81,10 +81,14 @@ func GenerateGrafana(configFile string, outputFile string) {
 			logErrorAndExit(err)
 			paths := keys(doc.Paths)
 			sort.StringSlice(paths).Sort()
+			skipSA := false
+			if config.Grafana.SkipServiceAccount != nil {
+				skipSA = *config.Grafana.SkipServiceAccount
+			}
 			for _, path := range paths {
 				exprAvailability, exprRequests,
 					exprErrors1, exprErrors2, exprError3,
-					exprDuration, exprLatency := prepareExpressions(config.Grafana.Service, normalizePath(path), *panelItem.Exception)
+					exprDuration, exprLatency := prepareExpressions(config.Grafana.Service, skipSA, normalizePath(path), *panelItem.Exception)
 				rowNum++
 				panelId++
 				fldId, panel = createRegular(*datasource, path, rowNum, panelId, fldId,
@@ -612,51 +616,75 @@ func normalizePath(path string) string {
 	return reNormalizePath.ReplaceAllString(path, "-")
 }
 
-func prepareExpressions(service string, path string, exception Exception) (string, string, string, string, *string, string, string) {
+func prepareExpressions(service string, skipServiceAccount bool, path string, exception Exception) (string, string, string, string, *string, string, string) {
 	exprAvailability := fmt.Sprintf(`
-sum(increase(api_inbound_request_count{namespace="$namespace",service=~"%s",path="%s",code!~"5..|0",service_account=~"$account"}[$__range]))
+sum(increase(api_inbound_request_count{namespace="$namespace",service=~"%s",path="%s",code!~"5..|0"SA}[$__range]))
 /
-sum(increase(api_inbound_request_count{namespace="$namespace",service=~"%s",path="%s",service_account=~"$account"}[$__range]))
+sum(increase(api_inbound_request_count{namespace="$namespace",service=~"%s",path="%s"SA}[$__range]))
 `,
 		service, path, service, path)
+
 	exprRequests := fmt.Sprintf(`
-sum by (code, method) (rate(api_inbound_request_count{namespace="$namespace",service=~"%s",path="%s",service_account=~"$account"}[$__range]))
+sum by (code, method) (rate(api_inbound_request_count{namespace="$namespace",service=~"%s",path="%s"SA}[$__range]))
 `,
 		service, path)
+
 	exprErrors1 := fmt.Sprintf(`
-sum (rate(api_inbound_request_count{namespace="$namespace",service=~"%s",path="%s",code!~"2..",service_account=~"$account"}[$__range]))
+sum (rate(api_inbound_request_count{namespace="$namespace",service=~"%s",path="%s",code!~"2.."SA}[$__range]))
 /
-sum (rate(api_inbound_request_count{namespace="$namespace",service=~"%s",path="%s",service_account=~"$account"}[$__range]))
+sum (rate(api_inbound_request_count{namespace="$namespace",service=~"%s",path="%s"SA}[$__range]))
 `,
 		service, path, service, path)
+
 	exprErrors2 := fmt.Sprintf(`
 sum (rate(api_inbound_request_count{namespace="$namespace",service=~"%s",path="%s",code=~"5..|0",service_account=~"$account"}[$__range]))
 /
 sum (rate(api_inbound_request_count{namespace="$namespace",service=~"%s",path="%s",service_account=~"$account"}[$__range]))
 `,
 		service, path, service, path)
+
 	exprDuration := fmt.Sprintf(`
-sum (increase(api_inbound_request_duration_sum{namespace="$namespace",service=~"%s",path="%s",code!~"5..|0",service_account=~"$account"}[$__range]))
+sum (increase(api_inbound_request_duration_sum{namespace="$namespace",service=~"%s",path="%s",code!~"5..|0"SA}[$__range]))
 /
-sum (increase(api_inbound_request_duration_count{namespace="$namespace",service=~"%s",path="%s",code!~"5..|0",service_account=~"$account"}[$__range]))
+sum (increase(api_inbound_request_duration_count{namespace="$namespace",service=~"%s",path="%s",code!~"5..|0"SA}[$__range]))
 `,
 		service, path, service, path)
+
 	exprLatency := fmt.Sprintf(`
-sum(increase(api_inbound_request_duration_bucket{namespace="$namespace",service=~"%s",path="%s",code!~"5..|0",le="1",service_account=~"$account"}[$__range]))
+sum(increase(api_inbound_request_duration_bucket{namespace="$namespace",service=~"%s",path="%s",code!~"5..|0",le="1"SA}[$__range]))
 /
-sum(increase(api_inbound_request_duration_count{namespace="$namespace",service=~"%s",path="%s",code!~"5..|0",service_account=~"$account"}[$__range]))
+sum(increase(api_inbound_request_duration_count{namespace="$namespace",service=~"%s",path="%s",code!~"5..|0"SA}[$__range]))
 `,
 		service, path, service, path)
+
 	var exprError3 *string
 	if strings.Contains(path, exception.Path) {
 		exception.Errors3 = toPtr(strings.Replace(*exception.Errors3, "grafana.service", service, -1))
 		exprError3 = toPtr(fmt.Sprintf(*exception.Errors3, path, exception.Method, path, exception.Method))
 	} else {
 		exprError3 = toPtr(fmt.Sprintf(`
-sum (rate(api_inbound_request_count{namespace="$namespace",service=~"%s",path="%s",code=~"4..|0",service_account=~"$account"}[$__range]))
+sum (rate(api_inbound_request_count{namespace="$namespace",service=~"%s",path="%s",code=~"4..|0"SA}[$__range]))
 /
-sum (rate(api_inbound_request_count{namespace="$namespace",service=~"%s",path="%s",service_account=~"$account"}[$__range]))
+sum (rate(api_inbound_request_count{namespace="$namespace",service=~"%s",path="%s"SA}[$__range]))
 `, service, path, service, path))
+	}
+
+	if skipServiceAccount {
+		exprAvailability = strings.ReplaceAll(exprAvailability, "SA", "")
+		exprRequests = strings.ReplaceAll(exprRequests, "SA", "")
+		exprErrors1 = strings.ReplaceAll(exprErrors1, "SA", "")
+		exprErrors2 = strings.ReplaceAll(exprErrors2, "SA", "")
+		*exprError3 = strings.ReplaceAll(*exprError3, "SA", "")
+		exprDuration = strings.ReplaceAll(exprDuration, "SA", "")
+		exprLatency = strings.ReplaceAll(exprLatency, "SA", "")
+	} else {
+		exprAvailability = strings.ReplaceAll(exprAvailability, "SA", ",service_account=~\"$account\"")
+		exprRequests = strings.ReplaceAll(exprRequests, "SA", ",service_account=~\"$account\"")
+		exprErrors1 = strings.ReplaceAll(exprErrors1, "SA", ",service_account=~\"$account\"")
+		exprErrors2 = strings.ReplaceAll(exprErrors2, "SA", ",service_account=~\"$account\"")
+		*exprError3 = strings.ReplaceAll(*exprError3, "SA", ",service_account=~\"$account\"")
+		exprDuration = strings.ReplaceAll(exprDuration, "SA", ",service_account=~\"$account\"")
+		exprLatency = strings.ReplaceAll(exprLatency, "SA", ",service_account=~\"$account\"")
 	}
 
 	return exprAvailability, exprRequests, exprErrors1, exprErrors2, exprError3, exprDuration, exprLatency
