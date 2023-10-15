@@ -637,9 +637,9 @@ sum (rate(api_inbound_request_count{namespace="$namespace",service=~"%s",path="%
 		service, path, service, path)
 
 	exprErrors2 := fmt.Sprintf(`
-sum (rate(api_inbound_request_count{namespace="$namespace",service=~"%s",path="%s",code=~"5..|0",service_account=~"$account"}[$__range]))
+sum (rate(api_inbound_request_count{namespace="$namespace",service=~"%s",path="%s",code=~"5..|0"SA}[$__range]))
 /
-sum (rate(api_inbound_request_count{namespace="$namespace",service=~"%s",path="%s",service_account=~"$account"}[$__range]))
+sum (rate(api_inbound_request_count{namespace="$namespace",service=~"%s",path="%s"SA}[$__range]))
 `,
 		service, path, service, path)
 
