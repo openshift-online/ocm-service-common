@@ -77,8 +77,9 @@ var KeycloakFedRampValidClaims = jwt.MapClaims{
 		"id":   "foo",
 		"name": "bar",
 	},
-	"given_name":  "foo",
-	"family_name": "bar",
+	"given_name":   "foo",
+	"family_name":  "bar",
+	"is_org_admin": true,
 }
 
 // helper func to copy claims to avoid mutating the original
@@ -183,6 +184,7 @@ func TestKeycloakFedRampOCMStandardClaimsValid(t *testing.T) {
 	Expect(*ocmStandardClaims.Organization.Name).To(Equal(claims["organization"].(map[string]interface{})["name"]))
 	Expect(*ocmStandardClaims.FirstName).To(Equal(claims["given_name"]))
 	Expect(*ocmStandardClaims.LastName).To(Equal(claims["family_name"]))
+	Expect(ocmStandardClaims.IsOrgAdmin).To(Equal(claims["is_org_admin"]))
 }
 
 func TestMultiValueAudience(t *testing.T) {
