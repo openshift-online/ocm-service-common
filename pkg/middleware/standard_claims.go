@@ -25,7 +25,8 @@ type AudienceRaw interface{}
 
 // These standard claims are driven by the api.ocm access scope.
 // The api.ocm access scope is active on the cloud-services client and can be manually enabled by SSO on central service accounts.
-// The only exception here is organization service account claims, as organization service accounts cannot leverage custom scopes.
+// Organization service accounts are enabled by default to use our custom scope and no enablement is required.
+// The only exception here is Cognito authentication, as Cognito does not leverage our custom scopes but is compatible with these claims.
 type OCMStandardClaims struct {
 	Audience         []string
 	AudienceRaw      AudienceRaw      `json:"aud,omitempty"` // aud can be a string "foo" or an array of strings ["foo", "bar"]
@@ -44,8 +45,9 @@ type OCMStandardClaims struct {
 	RHITUserID       *string          `json:"user_id"`
 	Access           AccessRules      `json:"realm_access"`
 	Impersonated     bool             `json:"impersonated"`
-	CognitoUsername  *string          `json:"username"`       // FedRAMP: Cognito-only (non-oidc-standard: use preferred_username in all other cases)
+	CognitoUsername  *string          `json:"username"`       // FedRAMP: Cognito-only normal user accounts (non-oidc-standard: use preferred_username in all other cases)
 	Groups           []string         `json:"cognito:groups"` // FedRAMP: Cognito-only
+	IsOrgAdmin       bool             `json:"is_org_admin"`   // FedRAMP: Keycloak-only
 
 	// Organizational Service Accounts-only
 	RHCreatorID *string `json:"rh-user-id"` // Org Service Account Creator User ID
