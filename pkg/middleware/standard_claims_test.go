@@ -273,3 +273,28 @@ func TestCommercialOCMStandardClaimsInvalid_OrgServiceAccount(t *testing.T) {
 
 	Expect(VerifyOCMClaims(claims)).To(BeFalse())
 }
+
+func TestClientIdFallback(t *testing.T) {
+	RegisterTestingT(t)
+
+	claims := copyClaims(CommercialValidClaims)
+	claims["client_id"] = "foo"
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	ocmStandardClaims := OCMStandardClaims{}
+	err := ocmStandardClaims.UnmarshalFromToken(token)
+	Expect(err).NotTo(HaveOccurred())
+
+	Expect(VerifyOCMClaims(claims)).To(BeTrue())
+	Expect(*ocmStandardClaims.ClientID).To(Equal(claims["client_id"]))
+
+	claims["clientId"] = "bar"
+
+	token = jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	ocmStandardClaims = OCMStandardClaims{}
+	err = ocmStandardClaims.UnmarshalFromToken(token)
+	Expect(err).NotTo(HaveOccurred())
+
+	Expect(VerifyOCMClaims(claims)).To(BeTrue())
+	Expect(*ocmStandardClaims.ClientID).To(Equal(claims["clientId"]))
+}

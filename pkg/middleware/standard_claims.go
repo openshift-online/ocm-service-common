@@ -35,7 +35,7 @@ type OCMStandardClaims struct {
 	Issuer           *string          `json:"iss"`
 	Locale           *string          `json:"locale"`
 	Scope            *string          `json:"scope"`
-	ClientID         *string          `json:"clientId"` // Alternatively mapped from "client_id" for FedRAMP
+	ClientID         *string          `json:"clientId"` // Alternatively mapped from "client_id"
 	Email            *string          `json:"email"`
 	EmailVerified    bool             `json:"email_verified"`
 	Username         *string          `json:"preferred_username"`
@@ -88,7 +88,6 @@ func (a *OCMStandardClaims) UnmarshalFromToken(token *jwt.Token) error {
 	}
 
 	// Fallback to mapping client_id to clientId
-	// This currently differs between commercial (clientId) and FedRAMP (client_id)
 	if claims["clientId"] == nil && claims["client_id"] != nil {
 		claims["clientId"] = claims["client_id"]
 	}
@@ -106,7 +105,11 @@ func VerifyOCMClaims(claims jwt.MapClaims) bool {
 	iss, issExists := claims["iss"]
 	_, audExists := claims["aud"]
 	scope, scopeExists := claims["scope"]
+	// map to clientId or client_id
 	clientID, clientIDExists := claims["clientId"]
+	if !clientIDExists {
+		clientID, clientIDExists = claims["client_id"]
+	}
 
 	isCognito := issExists && iss != nil && strings.Contains(iss.(string), "cognito")
 
