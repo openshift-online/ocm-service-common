@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 
@@ -243,6 +244,10 @@ func (l *logger) log(level zerolog.Level, sentryLevel sentry.Level, captureSentr
 	if event.Enabled() {
 		event.Msgf(message, args...)
 		event.Discard()
+	}
+
+	if sentryLevel == sentry.LevelFatal {
+		os.Exit(1)
 	}
 }
 
