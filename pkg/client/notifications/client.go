@@ -95,6 +95,10 @@ func (n *Client) Send(ctx context.Context, payload *NotificationPayload) error {
 		ulog.Err(err).Extra("payload", *payload).Error("Notifications.send: .Do(req)")
 		return err
 	}
+	if res.StatusCode != http.StatusOK {
+		ulog.Extra("payload", *payload).Error("Notifications.status: .Do(req): %d", res.StatusCode)
+		return errors.New(http.StatusText(res.StatusCode))
+	}
 	resBody, err := io.ReadAll(res.Body)
 	if err != nil {
 		ulog.Err(err).Extra("payload", *payload).Error("Notifications.send: read body")
