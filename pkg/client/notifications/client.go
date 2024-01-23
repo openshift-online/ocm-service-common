@@ -119,6 +119,7 @@ func (n *Client) Send(ctx context.Context, payload *NotificationPayload) error {
 		return errors.New(response.Details)
 	}
 
+	ulog.Extra("payload", *payload).Extra("response-body", resBody).Extra("response status", res.StatusCode).Extra("response", response).Info("Notifications Email received success")
 	return nil
 }
 
