@@ -25,6 +25,7 @@ type OCMLogger interface {
 	Extra(key string, value any) OCMLogger
 	AdditionalCallLevelSkips(skip int) OCMLogger
 	ClearExtras() OCMLogger
+	CaptureSentryEvent(capture bool) OCMLogger
 	Trace(args ...any)
 	Debug(args ...any)
 	Info(args ...any)
@@ -36,14 +37,16 @@ type OCMLogger interface {
 var _ OCMLogger = &logger{}
 
 type extra map[string]any
+type extraCallbacks map[string]func(ctx context.Context) any
 
 //type tags map[string]string
 
 type logger struct {
-	ctx                      context.Context
-	extra                    extra
-	err                      error
-	additionalCallLevelSkips int
+	ctx                        context.Context
+	extra                      extra
+	err                        error
+	additionalCallLevelSkips   int
+	captureSentryEventOverride *bool
 }
 
 var (
@@ -74,9 +77,9 @@ var (
 	// 		opID, ok := ctx.Value(OpIDKey).(string) -- this will work
 	// 		opID, ok := ctx.Value("opID").(string) -- this will NOT work
 	//
-	// This callback returns a map of all the keys/values from context that we want to be added to log
-	// For AMS these are: opID (operation ID), accountID, tx_id (transaction ID)
-	retrieveExtrasFromContextCallback func(ctx context.Context) map[string]any
+	// We allow you to register callback functions to safely retrieve values from the context. The values returned
+	// by those functions will be added to the log as `Extra` fields under the provided key.
+	retrieveExtraFromContextCallbacks = make(extraCallbacks)
 )
 
 var possibleLogLevels = []string{
@@ -87,6 +90,15 @@ var possibleLogLevels = []string{
 	zerolog.LevelErrorValue,
 	zerolog.LevelFatalValue,
 	zerolog.LevelPanicValue,
+}
+
+var sentryLevelMapping = map[zerolog.Level]sentry.Level{
+	zerolog.TraceLevel: sentry.LevelDebug,
+	zerolog.DebugLevel: sentry.LevelDebug,
+	zerolog.InfoLevel:  sentry.LevelInfo,
+	zerolog.WarnLevel:  sentry.LevelWarning,
+	zerolog.ErrorLevel: sentry.LevelError,
+	zerolog.FatalLevel: sentry.LevelFatal,
 }
 
 /**
@@ -148,8 +160,12 @@ func SetOutput(output io.Writer) {
 	rootLogger = rootLogger.Output(output)
 }
 
-func SetCallbackToRetrieveExtrasFromContext(callback func(ctx context.Context) map[string]any) {
-	retrieveExtrasFromContextCallback = callback
+func RegisterExtraDataCallback(key string, callback func(ctx context.Context) any) {
+	retrieveExtraFromContextCallbacks[key] = callback
+}
+
+func ClearExtraDataCallbacks() {
+	retrieveExtraFromContextCallbacks = make(extraCallbacks)
 }
 
 func SetTrimList(trims []string) {
@@ -197,113 +213,101 @@ func (l *logger) ClearExtras() OCMLogger {
 	return l
 }
 
+func (l *logger) CaptureSentryEvent(capture bool) OCMLogger {
+	l.captureSentryEventOverride = &capture
+	return l
+}
+
 func (l *logger) Info(args ...any) {
-	l.log(zerolog.InfoLevel, sentry.LevelInfo, false, args...)
+	l.log(zerolog.InfoLevel, args...)
 }
 
 func (l *logger) Debug(args ...any) {
-	l.log(zerolog.DebugLevel, sentry.LevelDebug, false, args...)
+	l.log(zerolog.DebugLevel, args...)
 }
 
 func (l *logger) Trace(args ...any) {
-	l.log(zerolog.TraceLevel, sentry.LevelDebug, false, args...)
+	l.log(zerolog.TraceLevel, args...)
 }
 
 func (l *logger) Warning(args ...any) {
-	l.log(zerolog.WarnLevel, sentry.LevelWarning, false, args...)
+	l.log(zerolog.WarnLevel, args...)
 }
 
 func (l *logger) Error(args ...any) {
-	l.log(zerolog.ErrorLevel, sentry.LevelError, true, args...)
+	l.log(zerolog.ErrorLevel, args...)
 }
 
 func (l *logger) Fatal(args ...any) {
-	l.log(zerolog.FatalLevel, sentry.LevelFatal, true, args...)
+	l.log(zerolog.FatalLevel, args...)
 }
 
 // Note: use the various "Depth" logging functions, so we get the correct file/line number in the logs
-func (l *logger) log(level zerolog.Level, sentryLevel sentry.Level, captureSentry bool, args ...any) {
+func (l *logger) log(level zerolog.Level, args ...any) {
 	defer func() {
 		l.err = nil
 		l.ClearExtras()
 	}()
 
-	event := l.hydrateLog(level)
 	message := ""
 	if len(args) > 0 {
 		message = args[0].(string)
 		args = args[1:]
 	}
 
-	if captureSentry && (sentryLevel == sentry.LevelError || sentryLevel == sentry.LevelFatal) {
-		if message == "" && l.err != nil {
-			message = l.err.Error()
-		}
-
-		l.captureSentryEvent(sentryLevel, message, args...)
+	if message == "" && l.err != nil {
+		message = l.err.Error()
 	}
+
+	// by default only capture sentry events for error and fatal levels
+	captureSentry := level == zerolog.ErrorLevel || level == zerolog.FatalLevel
+
+	// if caller explicitly overrides the captureSentryEvent, use that instead
+	if l.captureSentryEventOverride != nil {
+		captureSentry = *l.captureSentryEventOverride
+	}
+
+	if captureSentry {
+		sentryId := l.tryCaptureSentryEvent(level, message, args...)
+		if sentryId != nil {
+			l.Extra("SentryEventID", sentryId)
+		}
+	}
+
+	event := l.hydrateLog(level)
 
 	if event.Enabled() {
 		event.Msgf(message, args...)
 		event.Discard()
 	}
 
-	if sentryLevel == sentry.LevelFatal {
+	if level == zerolog.FatalLevel {
 		os.Exit(1)
 	}
 }
 
-func (l *logger) captureSentryEvent(level sentry.Level, message string, args ...any) {
+func (l *logger) tryCaptureSentryEvent(level zerolog.Level, message string, args ...any) *sentry.EventID {
 	event := sentry.NewEvent()
-	event.Level = level
+	event.Level = sentryLevelMapping[level]
 	event.Message = fmt.Sprintf(message, args...)
 	event.Fingerprint = []string{getMD5Hash(event.Message)}
 	event.Extra = l.extra
-	// We're not adding tags to keep low-cardinality ones out of there
-	//event.Tags = make(tags)
-	//for k, v := range l.extra {
-	//	switch v.(type) {
-	//	case string:
-	//		event.Tags[k] = v.(string)
-	//	case bool:
-	//		event.Tags[k] = "false"
-	//		if v.(bool) {
-	//			event.Tags[k] = "true"
-	//		}
-	//	case int:
-	//		i := v.(int)
-	//		event.Tags[k] = strconv.FormatInt(int64(i), 10)
-	//	case int8:
-	//		i := v.(int8)
-	//		event.Tags[k] = strconv.FormatInt(int64(i), 10)
-	//	case int16:
-	//		i := v.(int16)
-	//		event.Tags[k] = strconv.FormatInt(int64(i), 10)
-	//	case int32:
-	//		i := v.(int32)
-	//		event.Tags[k] = strconv.FormatInt(int64(i), 10)
-	//	case int64:
-	//		event.Tags[k] = strconv.FormatInt(v.(int64), 10)
-	//	case float32:
-	//		event.Tags[k] = strconv.FormatFloat(float64(v.(float32)), 'f', 2, 32)
-	//	case float64:
-	//		event.Tags[k] = strconv.FormatFloat(v.(float64), 'f', 2, 64)
-	//	default:
-	//		// skip complex types
-	//	}
-	//}
-	if level == sentry.LevelError || level == sentry.LevelFatal {
-		sentryStack := sentry.NewStacktrace()
-		// Remove from the stack trace all the top frames that refer to this package, as those are a useless noise:
-		stackSize := len(sentryStack.Frames)
-		for stackSize > 0 {
-			module := sentryStack.Frames[stackSize-1].Module
-			if !strings.HasSuffix(module, "/pkg/logger") {
-				break
-			}
-			stackSize--
+
+	if l.err != nil || level == zerolog.ErrorLevel || level == zerolog.FatalLevel {
+		var sentryStack *sentry.Stacktrace
+		if l.err != nil {
+			// support errors that include a stacktrace, such as github.com/pkg/errors
+			sentryStack = sentry.ExtractStacktrace(l.err)
 		}
-		sentryStack.Frames = sentryStack.Frames[:stackSize]
+		if sentryStack == nil {
+			sentryStack = sentry.NewStacktrace()
+
+			// remove the frames that are not relevant to the caller
+			// last frame of the stacktrace should be the line where the user called ulog.Error(...)
+			framesToKeep := len(sentryStack.Frames) - baseCallerSkipLevel - l.additionalCallLevelSkips
+			sentryStack.Frames = sentryStack.Frames[:framesToKeep]
+		}
+
 		// Add an exception to the event. Note that we use the log message as the `Type` of the error
 		// because that is what Sentry uses as the title for the issue, and types of errors in Go
 		// are usually not very useful.
@@ -322,15 +326,9 @@ func (l *logger) captureSentryEvent(level sentry.Level, message string, args ...
 	}
 
 	if sentryHub == nil {
-		log.Warn().Msg("Sentry hub does not present in logger")
-		return
+		return nil
 	}
-	eventId := sentryHub.CaptureEvent(event)
-	if eventId == nil {
-		log.Error().Str("level", string(level)).Str("message", event.Message).Msg("Failed to capture sentry event")
-	} else {
-		log.Info().Msgf("Captured sentry event: %s", *eventId)
-	}
+	return sentryHub.CaptureEvent(event)
 }
 
 func (l *logger) hydrateLog(level zerolog.Level) *zerolog.Event {
@@ -338,8 +336,9 @@ func (l *logger) hydrateLog(level zerolog.Level) *zerolog.Event {
 		Caller(baseCallerSkipLevel + l.additionalCallLevelSkips).
 		Err(l.err)
 
-	if retrieveExtrasFromContextCallback != nil {
-		for k, v := range retrieveExtrasFromContextCallback(l.ctx) {
+	for k, callback := range retrieveExtraFromContextCallbacks {
+		if callback != nil {
+			v := callback(l.ctx)
 			l.extra[k] = v
 		}
 	}
