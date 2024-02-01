@@ -20,7 +20,8 @@ import (
 type OCMLogger interface {
 	Err(err error) OCMLogger
 	// Extra stores a key-value pair in a map; entry with the same key will be overwritten
-	// All simple (non-struct, non-slice, non-map etc.) values will be also send to sentry/glitchtip as `tags`
+	// All simple (non-struct, non-slice, non-map etc.)
+	// These values will NOT be send to sentry/glitchtip as `tags`
 	Extra(key string, value any) OCMLogger
 	AdditionalCallLevelSkips(skip int) OCMLogger
 	ClearExtras() OCMLogger
@@ -35,7 +36,8 @@ type OCMLogger interface {
 var _ OCMLogger = &logger{}
 
 type extra map[string]any
-type tags map[string]string
+
+//type tags map[string]string
 
 type logger struct {
 	ctx                      context.Context
@@ -257,39 +259,39 @@ func (l *logger) captureSentryEvent(level sentry.Level, message string, args ...
 	event.Message = fmt.Sprintf(message, args...)
 	event.Fingerprint = []string{getMD5Hash(event.Message)}
 	event.Extra = l.extra
-	// add simple extras to tags
-	event.Tags = make(tags)
-	for k, v := range l.extra {
-		switch v.(type) {
-		case string:
-			event.Tags[k] = v.(string)
-		case bool:
-			event.Tags[k] = "false"
-			if v.(bool) {
-				event.Tags[k] = "true"
-			}
-		case int:
-			i := v.(int)
-			event.Tags[k] = strconv.FormatInt(int64(i), 10)
-		case int8:
-			i := v.(int8)
-			event.Tags[k] = strconv.FormatInt(int64(i), 10)
-		case int16:
-			i := v.(int16)
-			event.Tags[k] = strconv.FormatInt(int64(i), 10)
-		case int32:
-			i := v.(int32)
-			event.Tags[k] = strconv.FormatInt(int64(i), 10)
-		case int64:
-			event.Tags[k] = strconv.FormatInt(v.(int64), 10)
-		case float32:
-			event.Tags[k] = strconv.FormatFloat(float64(v.(float32)), 'f', 2, 32)
-		case float64:
-			event.Tags[k] = strconv.FormatFloat(v.(float64), 'f', 2, 64)
-		default:
-			// skip complex types
-		}
-	}
+	// We're not adding tags to keep low-cardinality ones out of there
+	//event.Tags = make(tags)
+	//for k, v := range l.extra {
+	//	switch v.(type) {
+	//	case string:
+	//		event.Tags[k] = v.(string)
+	//	case bool:
+	//		event.Tags[k] = "false"
+	//		if v.(bool) {
+	//			event.Tags[k] = "true"
+	//		}
+	//	case int:
+	//		i := v.(int)
+	//		event.Tags[k] = strconv.FormatInt(int64(i), 10)
+	//	case int8:
+	//		i := v.(int8)
+	//		event.Tags[k] = strconv.FormatInt(int64(i), 10)
+	//	case int16:
+	//		i := v.(int16)
+	//		event.Tags[k] = strconv.FormatInt(int64(i), 10)
+	//	case int32:
+	//		i := v.(int32)
+	//		event.Tags[k] = strconv.FormatInt(int64(i), 10)
+	//	case int64:
+	//		event.Tags[k] = strconv.FormatInt(v.(int64), 10)
+	//	case float32:
+	//		event.Tags[k] = strconv.FormatFloat(float64(v.(float32)), 'f', 2, 32)
+	//	case float64:
+	//		event.Tags[k] = strconv.FormatFloat(v.(float64), 'f', 2, 64)
+	//	default:
+	//		// skip complex types
+	//	}
+	//}
 	if level == sentry.LevelError || level == sentry.LevelFatal {
 		sentryStack := sentry.NewStacktrace()
 		// Remove from the stack trace all the top frames that refer to this package, as those are a useless noise:
