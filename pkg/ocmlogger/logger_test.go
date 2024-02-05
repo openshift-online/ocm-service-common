@@ -19,6 +19,7 @@ var _ = Describe("logger.Extra", Label("logger"), func() {
 
 	BeforeEach(func() {
 		ulog = NewOCMLogger(context.Background())
+		output = bytes.Buffer{}
 		SetOutput(&output)
 		DeferCleanup(func() {
 			SetOutput(os.Stderr)
@@ -114,7 +115,7 @@ var _ = Describe("logger.Extra", Label("logger"), func() {
 	Context("Error", func() {
 		It("adds error message, sets level to error", func() {
 			ulog.Err(fmt.Errorf("error-message"))
-			ulog.Error("ERROR")
+			ulog.CaptureSentryEvent(false).Error("ERROR")
 
 			result := output.String()
 			Expect(result).To(ContainSubstring("\"level\":\"error\","))
@@ -123,36 +124,54 @@ var _ = Describe("logger.Extra", Label("logger"), func() {
 		})
 	})
 
-	Context("supported context keys are added to output", func() {
+	Context("registered context keys are added to output", func() {
 		BeforeEach(func() {
-			retrieveExtrasFromContextCallback := func(ctx context.Context) map[string]any {
-				return map[string]any{
-					"opID":      ctx.Value("opID").(string),
-					"accountID": ctx.Value("accountID").(string),
-					"tx_id":     ctx.Value("tx_id").(int64),
-				}
+			getOpIdFromContext := func(ctx context.Context) any {
+				return ctx.Value("opID")
 			}
-			SetCallbackToRetrieveExtrasFromContext(retrieveExtrasFromContextCallback)
+			getTxIdFromContext := func(ctx context.Context) any {
+				return ctx.Value("tx_id")
+			}
+
+			RegisterExtraDataCallback("opID", getOpIdFromContext)
+			RegisterExtraDataCallback("tx_id", getTxIdFromContext)
 
 			ctx := context.Background()
+
+			//lint:ignore SA1029 doesnt matter for a test
 			ctx = context.WithValue(ctx, "opID", "OpId1")
-			ctx = context.WithValue(ctx, "accountID", "AccountID")
+
+			//lint:ignore SA1029 doesnt matter for a test
 			ctx = context.WithValue(ctx, "tx_id", int64(123))
 			ulog = NewOCMLogger(ctx)
 
-			DeferCleanup(func() {
-				SetCallbackToRetrieveExtrasFromContext(nil)
-			})
+			DeferCleanup(ClearExtraDataCallbacks)
 		})
 
 		It("each one is added to output", func() {
 			ulog.Warning("warning")
 
 			result := output.String()
-			Expect(result).To(ContainSubstring("\"level\":\"warn\""))
 			Expect(result).To(ContainSubstring("\"opID\":\"OpId1\""))
-			Expect(result).To(ContainSubstring("\"accountID\":\"AccountID\""))
 			Expect(result).To(ContainSubstring("\"tx_id\":123"))
+		})
+
+		It("nil function safe", func() {
+			ulog.Warning("warning")
+			RegisterExtraDataCallback("nilCallbackFunction", nil)
+
+			result := output.String()
+			Expect(result).To(ContainSubstring("\"opID\":\"OpId1\""))
+			Expect(result).To(ContainSubstring("\"tx_id\":123"))
+			Expect(result).NotTo(ContainSubstring("nilCallbackFunction"))
+		})
+
+		It("empty callback map safe", func() {
+			ClearExtraDataCallbacks()
+			ulog.Warning("warning")
+
+			result := output.String()
+			Expect(result).NotTo(ContainSubstring("\"Extra\""))
 		})
 	})
 })
