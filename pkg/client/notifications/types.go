@@ -25,6 +25,6 @@ type Recipient struct {
 }
 
 type Payload struct {
-	Subject    string            `json:"subject"`
-	GlobalVars map[string]string `json:"global_vars"`
+	Subject    string                 `json:"subject"`
+	GlobalVars map[string]interface{} `json:"global_vars"`
 }
