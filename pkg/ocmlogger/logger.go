@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/getsentry/sentry-go"
 	"github.com/rs/zerolog"
@@ -47,6 +48,7 @@ type logger struct {
 	err                        error
 	additionalCallLevelSkips   int
 	captureSentryEventOverride *bool
+	lock                       sync.RWMutex
 }
 
 var (
@@ -204,7 +206,9 @@ func (l *logger) AdditionalCallLevelSkips(skip int) OCMLogger {
 }
 
 func (l *logger) Extra(key string, value any) OCMLogger {
+	l.lock.Lock()
 	l.extra[key] = value
+	l.lock.Unlock()
 	return l
 }
 
@@ -244,8 +248,9 @@ func (l *logger) Fatal(args ...any) {
 
 // Note: use the various "Depth" logging functions, so we get the correct file/line number in the logs
 func (l *logger) log(level zerolog.Level, args ...any) {
+
 	defer func() {
-		l.err = nil
+		l.Err(nil)
 		l.ClearExtras()
 	}()
 
@@ -291,7 +296,9 @@ func (l *logger) tryCaptureSentryEvent(level zerolog.Level, message string, args
 	event.Level = sentryLevelMapping[level]
 	event.Message = fmt.Sprintf(message, args...)
 	event.Fingerprint = []string{getMD5Hash(event.Message)}
+	l.lock.RLock()
 	event.Extra = l.extra
+	defer l.lock.RUnlock()
 
 	if l.err != nil || level == zerolog.ErrorLevel || level == zerolog.FatalLevel {
 		var sentryStack *sentry.Stacktrace
@@ -339,12 +346,13 @@ func (l *logger) hydrateLog(level zerolog.Level) *zerolog.Event {
 	for k, callback := range retrieveExtraFromContextCallbacks {
 		if callback != nil {
 			v := callback(l.ctx)
-			l.extra[k] = v
+			l.Extra(k, v)
 		}
 	}
 
 	if len(l.extra) > 0 {
 		dict := zerolog.Dict()
+		l.lock.RLock()
 		for k, v := range l.extra {
 			switch typ := v.(type) {
 			case string:
@@ -370,6 +378,7 @@ func (l *logger) hydrateLog(level zerolog.Level) *zerolog.Event {
 				dict.Any(k, v)
 			}
 		}
+		l.lock.RUnlock()
 		event.Dict("Extra", dict)
 	}
 	return event
