@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"math"
 	"net/http"
 	"os"
 
@@ -172,6 +173,59 @@ var _ = Describe("logger.Extra", Label("logger"), func() {
 
 			result := output.String()
 			Expect(result).NotTo(ContainSubstring("\"Extra\""))
+		})
+	})
+
+	Context("Chaos", func() {
+		// Notes:
+		//	* without locks in place I can reliably produce concurrency issues with as few as 50 iterations
+		// 	* 10000 iterations takes about 0.1 seconds on my laptop
+		// 	* not advised to crank this too high, above 1000000 on my laptop used >100% cpu and 40 gigs of ram
+		//    and weird stuff started to happen before go shot itself to save the system
+		maxChaos := 10000
+		It("Extra() is thread safe", func() {
+			parallelLog := NewOCMLogger(context.Background())
+			for i := 0; i < maxChaos; i++ {
+				go func(i int) {
+					parallelLog.Extra("i", i).Info("Extra() %d", i)
+				}(i)
+			}
+		})
+		It("AdditionalCallLevelSkips() is thread safe", func() {
+			parallelLog := NewOCMLogger(context.Background())
+			for i := 0; i < maxChaos; i++ {
+				go func(i int) {
+					parallelLog.AdditionalCallLevelSkips(0).Info("AdditionalCallLevelSkips() %d", i)
+				}(i)
+			}
+		})
+		It("CaptureSentryEvent() is thread safe", func() {
+			parallelLog := NewOCMLogger(context.Background())
+			for i := 0; i < maxChaos; i++ {
+				go func(i int) {
+					parallelLog.CaptureSentryEvent(false).Info("CaptureSentryEvent() %d", i)
+				}(i)
+			}
+		})
+		It("Err() is thread safe", func() {
+			parallelLog := NewOCMLogger(context.Background())
+			for i := 0; i < maxChaos; i++ {
+				go func(i int) {
+					parallelLog.Err(fmt.Errorf("err %d", i)).Error("Err() %d", i)
+				}(i)
+			}
+		})
+		It("Lots of extras and an error for fun", func() {
+			parallelLog := NewOCMLogger(context.Background())
+			maxExtras := int(math.Sqrt(math.Max(float64(maxChaos*maxChaos), 100000)))
+			for i := 0; i < maxChaos; i++ {
+				go func(i int) {
+					for j := 0; j < maxExtras; j++ {
+						parallelLog.Extra(fmt.Sprintf("%d-%d", i, j), i+j)
+					}
+					parallelLog.Err(fmt.Errorf("err %d", i)).Error("Lots of extras %d", i)
+				}(i)
+			}
 		})
 	})
 })
