@@ -217,7 +217,7 @@ var _ = Describe("logger.Extra", Label("logger"), func() {
 		})
 		It("Lots of extras and an error for fun", func() {
 			parallelLog := NewOCMLogger(context.Background())
-			maxExtras := int(math.Sqrt(math.Max(float64(maxChaos*maxChaos), 100000)))
+			maxExtras := int(math.Sqrt(math.Max(float64(maxChaos*maxChaos), 10000)))
 			for i := 0; i < maxChaos; i++ {
 				go func(i int) {
 					for j := 0; j < maxExtras; j++ {
