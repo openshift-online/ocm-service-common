@@ -40,15 +40,18 @@ var _ OCMLogger = &logger{}
 type extra map[string]any
 type extraCallbacks map[string]func(ctx context.Context) any
 
-//type tags map[string]string
-
 type logger struct {
 	ctx                        context.Context
 	extra                      extra
 	err                        error
 	additionalCallLevelSkips   int
 	captureSentryEventOverride *bool
-	lock                       sync.RWMutex
+
+	// Thread Safety Note: We use a read-write lock to protect the `extra` map so that concurrent writes
+	// dont cause a panic, however, the logger is not fundamentally designed to be used concurrently as a
+	// communication channel. Each thread/goroutine should have its own internal logger instance. We make
+	// no concurrency guarantees other than "it wont blow up."
+	lock sync.RWMutex
 }
 
 var (
@@ -213,7 +216,9 @@ func (l *logger) Extra(key string, value any) OCMLogger {
 }
 
 func (l *logger) ClearExtras() OCMLogger {
+	l.lock.Lock()
 	l.extra = make(extra)
+	l.lock.Unlock()
 	return l
 }
 
@@ -296,9 +301,14 @@ func (l *logger) tryCaptureSentryEvent(level zerolog.Level, message string, args
 	event.Level = sentryLevelMapping[level]
 	event.Message = fmt.Sprintf(message, args...)
 	event.Fingerprint = []string{getMD5Hash(event.Message)}
+
+	// lock and copy extras since the Sentry lib publishes events asynchronously and we cant guarantee when the Extra map will be accessed
 	l.lock.RLock()
-	event.Extra = l.extra
-	defer l.lock.RUnlock()
+	event.Extra = make(map[string]interface{}, len(l.extra))
+	for k, v := range l.extra {
+		event.Extra[k] = v
+	}
+	l.lock.RUnlock()
 
 	if l.err != nil || level == zerolog.ErrorLevel || level == zerolog.FatalLevel {
 		var sentryStack *sentry.Stacktrace
