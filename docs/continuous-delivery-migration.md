@@ -1,4 +1,4 @@
-## CD Migration
+## Continuous Delivery Migration
 
 Migrations can be problematic when trying to move towards continuous deployment. At first glance it looks impossible to CD a breaking migration. Essentially the solution is always to break the migration into multiple smaller and safer steps. Note that migrations can and should be tested -- like any other code change. In AMS we have a lot of experience testing complicated migrations:
 

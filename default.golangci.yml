@@ -1,0 +1,54 @@
+run:
+  skip-dirs:
+  - data
+  - vendor
+  - openshift.local.clusterup
+  deadline: 15m
+  issues-exit-code: 1
+issues:
+  max-same-issues: 0
+linters:
+  disable-all: true
+  enable:
+  - bodyclose
+  - goconst
+  - gosec
+  - gosimple
+  - ineffassign
+  - lll
+  - misspell
+  - staticcheck
+  - unconvert
+  - govet
+  - unused
+  - forbidigo
+  - gci
+linters-settings:
+  gosec:
+    excludes:
+      - "G101" # Potential hardcoded credentials
+      - "G505" # Allow usage of SHA1
+  staticcheck:
+    go: "1.20"
+    checks:
+      - "all"
+      - "-SA1029" # Inappropriate key in call to context.WithValue
+  govet:
+    enable-all: true
+    disable:
+      - fieldalignment
+      - shadow
+  forbidigo:
+    # Forbid the following identifiers (list of regexp).
+    forbid:
+      - p: ^fmt\.Error.*$
+        msg: Do not use 'fmt.Error', use weberr instead, imported with alias 'errors'.
+  gci:
+    sections:
+      - standard
+      - default
+      - prefix(k8s)
+      - prefix(sigs.k8s)
+      - prefix(github.com)
+      - prefix(gitlab)
+    custom-order: true
