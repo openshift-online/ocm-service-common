@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	jwt "github.com/golang-jwt/jwt/v4"
+	"github.com/openshift-online/ocm-sdk-go/authentication"
 )
 
 const (
@@ -40,8 +41,8 @@ type TokenValidationMiddlewareImpl struct {
 	approvedAudiences           []string
 	denyScopes                  []string
 	requiredScopes              []string
-	enforceServiceAccountScopes bool
-	callbackFn                  func(http.ResponseWriter, *http.Request, error)
+	EnforceServiceAccountScopes bool
+	CallbackFn                  func(http.ResponseWriter, *http.Request, error)
 }
 
 var _ TokenValidationMiddleware = &TokenValidationMiddlewareImpl{}
@@ -75,35 +76,12 @@ func (t *TokenValidationMiddlewareImpl) ValidateAudience(ctx context.Context) er
 		return nil
 	}
 
-	// aud can be a string or a slice of strings
-	// if it's a string, convert it to a slice of strings
-	aud, ok := claims["aud"].([]string)
-	if !ok {
-		audString, ok := claims["aud"].(string)
-		if !ok {
-			return fmt.Errorf("failed to get token aud")
-		}
-		aud = []string{audString}
-	}
-
-	validAudience := false
 	for _, approvedAudience := range t.approvedAudiences {
-		for _, audience := range aud {
-			if approvedAudience == audience {
-				validAudience = true
-				break
-			}
-		}
-		if validAudience {
-			break
+		if claims.VerifyAudience(approvedAudience, true) {
+			return nil
 		}
 	}
-
-	if !validAudience {
-		return ErrInvalidAudience
-	}
-
-	return nil
+	return ErrInvalidAudience
 }
 
 // Validates if the token scopes conform to the resource servers requirements.
@@ -122,7 +100,7 @@ func (t *TokenValidationMiddlewareImpl) ValidateScopes(ctx context.Context) erro
 		return fmt.Errorf("failed to get token claims: %w", err)
 	}
 
-	if isServiceAccount(claims) && !t.enforceServiceAccountScopes {
+	if isServiceAccount(claims) && !t.EnforceServiceAccountScopes {
 		return nil
 	}
 
@@ -187,13 +165,12 @@ func (t *TokenValidationMiddlewareImpl) ValidateAll(ctx context.Context) error {
 func (t *TokenValidationMiddlewareImpl) Handler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		err := t.ValidateAll(r.Context())
-		if t.callbackFn != nil {
-			t.callbackFn(w, r, err)
+		if t.CallbackFn != nil {
+			t.CallbackFn(w, r, err)
 		}
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
-			w.Write([]byte(err.Error()))
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -203,21 +180,17 @@ func (t *TokenValidationMiddlewareImpl) Handler(next http.Handler) http.Handler 
 // extracts the JSON web token of the user from the context. If no token is found
 // in the context then the result will be nil.
 func tokenClaimsFromContext(ctx context.Context) (result jwt.MapClaims, err error) {
-	tokenKeyValue := "token"
-	switch token := ctx.Value(tokenKeyValue).(type) {
-	case nil:
-	case *jwt.Token:
-		claims, ok := token.Claims.(jwt.MapClaims)
-		if !ok {
-			err = fmt.Errorf("cannot convert token to claims")
-		} else {
-			result = claims
-		}
-	default:
-		err = fmt.Errorf(
-			"expected a token in the '%s' context value, but got '%T'",
-			tokenKeyValue, token,
-		)
+	token, err := authentication.TokenFromContext(ctx)
+	if err != nil || token == nil {
+		err = fmt.Errorf("cannot get token from context")
+		return
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		err = fmt.Errorf("cannot convert token to claims")
+	} else {
+		result = claims
 	}
 
 	return
