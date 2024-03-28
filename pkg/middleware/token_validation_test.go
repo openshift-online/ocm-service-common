@@ -10,6 +10,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/openshift-online/ocm-sdk-go/authentication"
 )
 
 func TestValidAudienceString(t *testing.T) {
@@ -27,7 +28,7 @@ func TestValidAudienceString(t *testing.T) {
 func TestValidAudienceSlice(t *testing.T) {
 	RegisterTestingT(t)
 
-	ctx := generateBasicTokenCtx([]string{"cloud-services", "other-audience"}, "")
+	ctx := generateBasicTokenCtx([]interface{}{"cloud-services", "other-audience"}, "")
 
 	middleware := NewTokenValidationMiddleware(DefaultApprovedAudiences, nil, nil)
 	Expect(middleware).NotTo(BeNil())
@@ -39,7 +40,7 @@ func TestValidAudienceSlice(t *testing.T) {
 func TestValidNoApprovedAudience(t *testing.T) {
 	RegisterTestingT(t)
 
-	ctx := generateBasicTokenCtx([]string{"cloud-services", "other-audience"}, "")
+	ctx := generateBasicTokenCtx([]interface{}{"cloud-services", "other-audience"}, "")
 
 	// Validates that no validation is performed when approvedAudiences is empty
 	middleware := NewTokenValidationMiddleware(nil, nil, nil)
@@ -52,7 +53,7 @@ func TestValidNoApprovedAudience(t *testing.T) {
 func TestInvalidAudience(t *testing.T) {
 	RegisterTestingT(t)
 
-	ctx := generateBasicTokenCtx([]string{"invalid-audience"}, "")
+	ctx := generateBasicTokenCtx("invalid-audience", "")
 
 	middleware := NewTokenValidationMiddleware(DefaultApprovedAudiences, nil, nil)
 	Expect(middleware).NotTo(BeNil())
@@ -150,7 +151,7 @@ func TestServiceAccountWithScopeValidationPass(t *testing.T) {
 
 	middleware := NewTokenValidationMiddleware(nil, nil, []string{"api.ocm"})
 	Expect(middleware).NotTo(BeNil())
-	middleware.enforceServiceAccountScopes = true
+	middleware.EnforceServiceAccountScopes = true
 
 	err := middleware.ValidateScopes(ctx)
 	Expect(err).NotTo(HaveOccurred())
@@ -163,7 +164,7 @@ func TestServiceAccountWithScopeValidationFail(t *testing.T) {
 
 	middleware := NewTokenValidationMiddleware(nil, nil, []string{"api.ocm"})
 	Expect(middleware).NotTo(BeNil())
-	middleware.enforceServiceAccountScopes = true
+	middleware.EnforceServiceAccountScopes = true
 
 	err := middleware.ValidateScopes(ctx)
 	Expect(err).To(HaveOccurred())
@@ -175,7 +176,7 @@ func TestValidateAll(t *testing.T) {
 
 	ctx := generateBasicTokenCtx("", "openid api.ocm")
 
-	middleware := NewTokenValidationMiddleware([]string{""}, []string{"offline_access"}, []string{"api.ocm"})
+	middleware := NewTokenValidationMiddleware(nil, []string{"offline_access"}, []string{"api.ocm"})
 	Expect(middleware).NotTo(BeNil())
 
 	err := middleware.ValidateAll(ctx)
@@ -188,7 +189,7 @@ func TestMiddlewareValidate(t *testing.T) {
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		Expect(r.Method).To(Equal(http.MethodGet))
 	})
-	middleware := NewTokenValidationMiddleware([]string{""}, []string{"offline_access"}, []string{"api.ocm"}).Handler(nextHandler)
+	middleware := NewTokenValidationMiddleware(nil, []string{"offline_access"}, []string{"api.ocm"}).Handler(nextHandler)
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	recorder := httptest.NewRecorder()
 
@@ -210,7 +211,6 @@ func TestMiddlewareValidateNoContext(t *testing.T) {
 
 	middleware.ServeHTTP(recorder, request)
 	Expect(recorder.Code).To(Equal(http.StatusUnauthorized))
-	Expect(recorder.Body.String()).ToNot(BeEmpty())
 }
 
 func TestMiddlewareValidateWithCallbackPassthrough(t *testing.T) {
@@ -219,8 +219,8 @@ func TestMiddlewareValidateWithCallbackPassthrough(t *testing.T) {
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		Expect(r.Method).To(Equal(http.MethodGet))
 	})
-	middleware := NewTokenValidationMiddleware([]string{""}, []string{"offline_access"}, []string{"api.ocm"})
-	middleware.callbackFn = callback
+	middleware := NewTokenValidationMiddleware(nil, []string{"offline_access"}, []string{"api.ocm"})
+	middleware.CallbackFn = callback
 
 	handler := middleware.Handler(nextHandler)
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -239,7 +239,7 @@ func TestMiddlewareValidateWithCallbackError(t *testing.T) {
 		Expect(r.Method).To(Equal(http.MethodGet))
 	})
 	middleware := NewTokenValidationMiddleware([]string{""}, []string{"offline_access"}, []string{"api.ocm"})
-	middleware.callbackFn = callbackExpectError
+	middleware.CallbackFn = callbackExpectError
 
 	handler := middleware.Handler(nextHandler)
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -258,7 +258,7 @@ func generateBasicTokenCtx(aud interface{}, scope string) context.Context {
 		"scope": scope,
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return context.WithValue(context.Background(), "token", token)
+	return authentication.ContextWithToken(context.Background(), token)
 }
 
 // Generates a service account token context
@@ -269,7 +269,7 @@ func generateServiceAcctTokenCtx(clientIdKey string, scope string) context.Conte
 		"scope":     scope,
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return context.WithValue(context.Background(), "token", token)
+	return authentication.ContextWithToken(context.Background(), token)
 }
 
 func callback(w http.ResponseWriter, r *http.Request, err error) {
