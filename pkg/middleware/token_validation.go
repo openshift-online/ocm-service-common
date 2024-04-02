@@ -25,9 +25,15 @@ var (
 )
 
 // The default list of approved audiences that should be allowed to access OCM resource servers
+//   - cloud-services: Default UI & offline token client
+//   - ocm-cli: OCM & ROSA CLI Authorizations
+//   - customer-portal: Support case management use cases
+//   - console-dot: Default FedRAMP keycloak client
 var DefaultApprovedAudiences = []string{
 	"cloud-services",
 	"ocm-cli",
+	"customer-portal",
+	"console-dot",
 }
 
 type TokenValidationMiddleware interface {

@@ -171,6 +171,18 @@ func TestServiceAccountWithScopeValidationFail(t *testing.T) {
 	Expect(errors.Unwrap(err)).To(Equal(ErrMissingRequiredScopes))
 }
 
+func TestCognitoValidation(t *testing.T) {
+	RegisterTestingT(t)
+
+	ctx := generateCognitoTokenCtx()
+
+	middleware := NewTokenValidationMiddleware(DefaultApprovedAudiences, nil, nil)
+	Expect(middleware).NotTo(BeNil())
+
+	err := middleware.ValidateScopes(ctx)
+	Expect(err).NotTo(HaveOccurred())
+}
+
 func TestValidateAll(t *testing.T) {
 	RegisterTestingT(t)
 
@@ -267,6 +279,16 @@ func generateServiceAcctTokenCtx(clientIdKey string, scope string) context.Conte
 	claims := jwt.MapClaims{
 		clientIdKey: "1234",
 		"scope":     scope,
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return authentication.ContextWithToken(context.Background(), token)
+}
+
+// Generates a cognito token context
+func generateCognitoTokenCtx() context.Context {
+	claims := jwt.MapClaims{
+		"client_id": "1234",
+		"scope":     "gateway/AccessToken openid",
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return authentication.ContextWithToken(context.Background(), token)
