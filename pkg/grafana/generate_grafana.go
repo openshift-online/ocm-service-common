@@ -627,7 +627,7 @@ sum(increase(api_inbound_request_count{namespace="$namespace",service=~"%s",path
 		service, path, service, path)
 
 	exprRequests := fmt.Sprintf(`
-sum by (code, method) (rate(api_inbound_request_count{namespace="$namespace",service=~"%s",path="%s"SA}[$__range]))
+sum by (code, method) (rate(api_inbound_request_count{namespace="$namespace",service=~"%s",path="%s"SA}[$__rate_interval]))
 `,
 		service, path)
 
