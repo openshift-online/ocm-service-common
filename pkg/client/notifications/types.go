@@ -1,16 +1,15 @@
 package notifications
 
 type NotificationPayload struct {
-	Id           string      `json:"id"`
-	Bundle       string      `json:"bundle"`
-	Application  string      `json:"application"`
-	EventType    string      `json:"event_type"`
-	EventSubType string      `json:"event_sub_type"`
-	Timestamp    string      `json:"timestamp"`
-	OrgId        string      `json:"org_id"`
-	Context      struct{}    `json:"context"`
-	Events       []Event     `json:"events"`
-	Recipients   []Recipient `json:"recipients"`
+	Id          string      `json:"id"`
+	Bundle      string      `json:"bundle"`
+	Application string      `json:"application"`
+	EventType   string      `json:"event_type"`
+	Timestamp   string      `json:"timestamp"`
+	OrgId       string      `json:"org_id"`
+	Context     struct{}    `json:"context"`
+	Events      []Event     `json:"events"`
+	Recipients  []Recipient `json:"recipients"`
 }
 
 type Event struct {
