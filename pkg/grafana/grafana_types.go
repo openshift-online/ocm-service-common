@@ -123,7 +123,37 @@ type Threshold struct {
 }
 
 type Custom struct {
-	Filterable bool `json:"filterable,omitempty" yaml:"filterable,omitempty"`
+	Filterable       bool   `json:"filterable,omitempty" yaml:"filterable,omitempty"`
+	AxisBorderShow   bool   `json:"axisBorderShow,omitempty" yaml:"axisBorderShow,omitempty"`
+	AxisCenteredZero bool   `json:"axisCenteredZero,omitempty" yaml:"axisCenteredZero,omitempty"`
+	AxisColorMode    string `json:"axisColorMode,omitempty" yaml:"axisColorMode,omitempty"`
+	AxisLabel        string `json:"axisLabel,omitempty" yaml:"axisLabel,omitempty"`
+	AxisPlacement    string `json:"axisPlacement,omitempty" yaml:"axisPlacement,omitempty"`
+	BarAlignment     int    `json:"barAlignment,omitempty" yaml:"barAlignment,omitempty"`
+	DrawStyle        string `json:"drawStyle,omitempty" yaml:"drawStyle,omitempty"`
+	FillOpacity      int    `json:"fillOpacity,omitempty" yaml:"fillOpacity,omitempty"`
+	GradientMode     string `json:"gradientMode,omitempty" yaml:"gradientMode,omitempty"`
+	HideFrom         struct {
+		Legend  bool `json:"legend,omitempty" yaml:"legend,omitempty"`
+		Tooltip bool `json:"tooltip,omitempty" yaml:"tooltip,omitempty"`
+		Viz     bool `json:"viz,omitempty" yaml:"viz,omitempty"`
+	} `json:"hideFrom,omitempty" yaml:"hideFrom,omitempty"`
+	InsertNulls       bool   `json:"insertNulls,omitempty" yaml:"insertNulls,omitempty"`
+	LineInterpolation string `json:"lineInterpolation,omitempty" yaml:"lineInterpolation,omitempty"`
+	LineWidth         int    `json:"lineWidth,omitempty" yaml:"lineWidth,omitempty"`
+	PointSize         int    `json:"pointSize,omitempty" yaml:"pointSize,omitempty"`
+	ScaleDistribution struct {
+		Type string `json:"type,omitempty" yaml:"type,omitempty"`
+	} `json:"scaleDistribution,omitempty" yaml:"scaleDistribution,omitempty"`
+	ShowPoints string `json:"showPoints,omitempty" yaml:"showPoints,omitempty"`
+	SpanNulls  bool   `json:"spanNulls,omitempty" yaml:"spanNulls,omitempty"`
+	Stacking   struct {
+		Group string `json:"group,omitempty" yaml:"group,omitempty"`
+		Mode  string `json:"mode,omitempty" yaml:"mode,omitempty"`
+	} `json:"stacking,omitempty" yaml:"stacking,omitempty"`
+	ThresholdsStyle struct {
+		Mode string `json:"mode,omitempty" yaml:"mode,omitempty"`
+	} `json:"thresholdsStyle,omitempty" yaml:"thresholdsStyle,omitempty"`
 }
 
 type Defaults struct {
@@ -132,15 +162,30 @@ type Defaults struct {
 	Mappings   *[]Mapping `json:"mappings,omitempty" yaml:"mappings,omitempty"`
 	Thresholds *Threshold `json:"thresholds,omitempty" yaml:"thresholds,omitempty"`
 	Unit       *string    `json:"unit,omitempty" yaml:"unit,omitempty"`
-	Overrides  *[]string  `json:"overrides,omitempty" yaml:"overrides,omitempty"`
+	Overrides  *string    `json:"overrides,omitempty" yaml:"overrides,omitempty"`
 	Custom     *Custom    `json:"custom,omitempty" yaml:"custom,omitempty"`
 }
 
 type FieldConfig struct {
-	Defaults  *Defaults `json:"defaults,omitempty" yaml:"defaults,omitempty"`
-	Overrides *[]string `json:"overrides,omitempty" yaml:"overrides,omitempty"`
+	Defaults  *Defaults    `json:"defaults,omitempty" yaml:"defaults,omitempty"`
+	Overrides *[]Overrides `json:"overrides,omitempty" yaml:"overrides,omitempty"`
 }
 
+// TODO: finish this
+type Overrides struct {
+	Matcher    *Matcher      `json:"matcher,omitempty" yaml:"matcher,omitempty"`
+	Properties []*Properties `json:"properties,omitempty" yaml:"properties,omitempty"`
+}
+
+type Matcher struct {
+	Id      string `json:"id,omitempty" yaml:"id,omitempty"`
+	Options string `json:"options,omitempty" yaml:"options,omitempty"`
+}
+
+type Properties struct {
+	Id    string `json:"id,omitempty" yaml:"id,omitempty"`
+	Value int    `json:"value,omitempty" yaml:"value,omitempty"`
+}
 type ReduceOptions struct {
 	Calcs  *[]string `json:"calcs,omitempty" yaml:"calcs,omitempty"`
 	Fields *string   `json:"fields,omitempty" yaml:"fields,omitempty"`
@@ -163,10 +208,24 @@ type Options struct {
 	FieldOptions  *FieldOptions  `json:"fieldOptions,omitempty" yaml:"fieldOptions,omitempty"`
 	Text          *struct {
 	} `json:"text,omitempty" yaml:"text,omitempty"`
-	TextMode             *string `json:"textMode,omitempty" yaml:"textMode,omitempty"`
-	AlertThreshold       *bool   `json:"alertThreshold,omitempty" yaml:"alertThreshold,omitempty"`
-	ShowThresholdLabels  *bool   `json:"showThresholdLabels,omitempty" yaml:"showThresholdLabels,omitempty"`
-	ShowThresholdMarkers *bool   `json:"showThresholdMarkers,omitempty" yaml:"showThresholdMarkers,omitempty"`
+	TextMode             *string         `json:"textMode,omitempty" yaml:"textMode,omitempty"`
+	AlertThreshold       *bool           `json:"alertThreshold,omitempty" yaml:"alertThreshold,omitempty"`
+	ShowThresholdLabels  *bool           `json:"showThresholdLabels,omitempty" yaml:"showThresholdLabels,omitempty"`
+	ShowThresholdMarkers *bool           `json:"showThresholdMarkers,omitempty" yaml:"showThresholdMarkers,omitempty"`
+	LegendOptions        *LegendOptions  `json:"legend,omitempty" yaml:"legend,omitempty"`
+	TooltipOptions       *TooltipOptions `json:"tooltip,omitempty" yaml:"tooltip,omitempty"`
+}
+
+type TooltipOptions struct {
+	Mode *string `json:"mode,omitempty" yaml:"mode,omitempty"`
+	Sort *string `json:"sort,omitempty" yaml:"sort,omitempty"`
+}
+
+type LegendOptions struct {
+	Calcs       *[]string `json:"calcs,omitempty" yaml:"calcs,omitempty"`
+	DisplayMode *string   `json:"displayMode,omitempty" yaml:"displayMode,omitempty"`
+	Placement   *string   `json:"placement,omitempty" yaml:"placement,omitempty"`
+	ShowLegend  *bool     `json:"showLegend,omitempty" yaml:"showLegend,omitempty"`
 }
 
 type Legend struct {

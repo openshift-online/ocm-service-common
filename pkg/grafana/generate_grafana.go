@@ -129,7 +129,11 @@ func createCustom(title string, datasource Datasource, panels []PanelItem, rowNu
 	}
 	for _, pi := range panels {
 		pi.Id = fldId
-		pi.PluginVersion = toPtr("7.2.1")
+		if strings.EqualFold(*pi.Type, "timeseries") {
+			pi.PluginVersion = toPtr("10.4.1")
+		} else {
+			pi.PluginVersion = toPtr("7.2.1")
+		}
 		refId := 'A'
 		for i := range pi.Targets {
 			pi.Targets[i].Expr = strings.Replace(pi.Targets[i].Expr, "grafana.service", service, -1)
@@ -211,7 +215,7 @@ func createRegular(datasource Datasource, title string, rowNum int, panelId int,
 						Unit:      toPtr("percentunit"),
 						Overrides: nil,
 					},
-					Overrides: &[]string{},
+					Overrides: &[]Overrides{},
 				},
 				Id:            fldId,
 				MaxDataPoints: toPtr(100),
