@@ -138,22 +138,25 @@ type Custom struct {
 		Tooltip bool `json:"tooltip,omitempty" yaml:"tooltip,omitempty"`
 		Viz     bool `json:"viz,omitempty" yaml:"viz,omitempty"`
 	} `json:"hideFrom,omitempty" yaml:"hideFrom,omitempty"`
-	InsertNulls       bool   `json:"insertNulls,omitempty" yaml:"insertNulls,omitempty"`
-	LineInterpolation string `json:"lineInterpolation,omitempty" yaml:"lineInterpolation,omitempty"`
-	LineWidth         int    `json:"lineWidth,omitempty" yaml:"lineWidth,omitempty"`
-	PointSize         int    `json:"pointSize,omitempty" yaml:"pointSize,omitempty"`
-	ScaleDistribution struct {
-		Type string `json:"type,omitempty" yaml:"type,omitempty"`
-	} `json:"scaleDistribution,omitempty" yaml:"scaleDistribution,omitempty"`
-	ShowPoints string `json:"showPoints,omitempty" yaml:"showPoints,omitempty"`
-	SpanNulls  bool   `json:"spanNulls,omitempty" yaml:"spanNulls,omitempty"`
-	Stacking   struct {
+	InsertNulls       bool               `json:"insertNulls,omitempty" yaml:"insertNulls,omitempty"`
+	LineInterpolation string             `json:"lineInterpolation,omitempty" yaml:"lineInterpolation,omitempty"`
+	LineWidth         int                `json:"lineWidth,omitempty" yaml:"lineWidth,omitempty"`
+	PointSize         int                `json:"pointSize,omitempty" yaml:"pointSize,omitempty"`
+	ScaleDistribution *ScaleDistribution `json:"scaleDistribution,omitempty" yaml:"scaleDistribution,omitempty"`
+	ShowPoints        string             `json:"showPoints,omitempty" yaml:"showPoints,omitempty"`
+	SpanNulls         bool               `json:"spanNulls,omitempty" yaml:"spanNulls,omitempty"`
+	Stacking          struct {
 		Group string `json:"group,omitempty" yaml:"group,omitempty"`
 		Mode  string `json:"mode,omitempty" yaml:"mode,omitempty"`
 	} `json:"stacking,omitempty" yaml:"stacking,omitempty"`
 	ThresholdsStyle struct {
 		Mode string `json:"mode,omitempty" yaml:"mode,omitempty"`
 	} `json:"thresholdsStyle,omitempty" yaml:"thresholdsStyle,omitempty"`
+}
+
+type ScaleDistribution struct {
+	Type string `json:"type,omitempty" yaml:"type,omitempty"`
+	Log  int    `json:"log,omitempty" yaml:"log,omitempty"`
 }
 
 type Defaults struct {
