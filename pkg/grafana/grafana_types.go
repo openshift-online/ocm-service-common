@@ -174,7 +174,6 @@ type FieldConfig struct {
 	Overrides *[]Overrides `json:"overrides,omitempty" yaml:"overrides,omitempty"`
 }
 
-// TODO: finish this
 type Overrides struct {
 	Matcher    *Matcher      `json:"matcher,omitempty" yaml:"matcher,omitempty"`
 	Properties []*Properties `json:"properties,omitempty" yaml:"properties,omitempty"`
@@ -187,7 +186,7 @@ type Matcher struct {
 
 type Properties struct {
 	Id    string `json:"id,omitempty" yaml:"id,omitempty"`
-	Value int    `json:"value,omitempty" yaml:"value,omitempty"`
+	Value any    `json:"value,omitempty" yaml:"value,omitempty"`
 }
 type ReduceOptions struct {
 	Calcs  *[]string `json:"calcs,omitempty" yaml:"calcs,omitempty"`
