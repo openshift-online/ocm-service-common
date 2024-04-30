@@ -540,9 +540,7 @@ func (q *Query) MarshalJSON() ([]byte, error) {
 var reNormalizePath = regexp.MustCompile(`\{(.*?)}`)
 
 func normalizePath(path string) string {
-	normalizedPath := reNormalizePath.ReplaceAllString(path, "-")
-	normalizedPath = strings.TrimSuffix(normalizedPath, "/-")
-	return normalizedPath
+	return reNormalizePath.ReplaceAllString(path, "-")
 }
 
 func prepareExpressions(service string, skipServiceAccount bool, path string, exception Exception) (string, string, string, string, *string, string, string) {
