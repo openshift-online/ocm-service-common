@@ -2,91 +2,32 @@ package middleware
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/google/uuid"
 	. "github.com/onsi/gomega"
+	test "gitlab.cee.redhat.com/service/ocm-common/pkg/test"
 	"golang.org/x/net/context"
 
 	"github.com/golang-jwt/jwt/v4"
+	v1 "github.com/openshift-online/ocm-sdk-go/accountsmgmt/v1"
 	"github.com/openshift-online/ocm-sdk-go/authentication"
+	. "github.com/openshift-online/ocm-sdk-go/testing"
 )
-
-func TestValidAudienceString(t *testing.T) {
-	RegisterTestingT(t)
-
-	ctx := generateBasicTokenCtx("cloud-services", "")
-
-	middleware := NewTokenValidationMiddleware(DefaultApprovedAudiences, nil, nil)
-	Expect(middleware).NotTo(BeNil())
-
-	err := middleware.ValidateAudience(ctx)
-	Expect(err).NotTo(HaveOccurred())
-}
-
-func TestValidAudienceSlice(t *testing.T) {
-	RegisterTestingT(t)
-
-	ctx := generateBasicTokenCtx([]interface{}{"cloud-services", "other-audience"}, "")
-
-	middleware := NewTokenValidationMiddleware(DefaultApprovedAudiences, nil, nil)
-	Expect(middleware).NotTo(BeNil())
-
-	err := middleware.ValidateAudience(ctx)
-	Expect(err).NotTo(HaveOccurred())
-}
-
-func TestValidNoApprovedAudience(t *testing.T) {
-	RegisterTestingT(t)
-
-	ctx := generateBasicTokenCtx([]interface{}{"cloud-services", "other-audience"}, "")
-
-	// Validates that no validation is performed when approvedAudiences is empty
-	middleware := NewTokenValidationMiddleware(nil, nil, nil)
-	Expect(middleware).NotTo(BeNil())
-
-	err := middleware.ValidateAudience(ctx)
-	Expect(err).NotTo(HaveOccurred())
-}
-
-func TestInvalidAudience(t *testing.T) {
-	RegisterTestingT(t)
-
-	ctx := generateBasicTokenCtx("invalid-audience", "")
-
-	middleware := NewTokenValidationMiddleware(DefaultApprovedAudiences, nil, nil)
-	Expect(middleware).NotTo(BeNil())
-
-	err := middleware.ValidateAudience(ctx)
-	Expect(err).To(HaveOccurred())
-	Expect(err).To(Equal(ErrInvalidAudience))
-}
-
-func TestServiceAcctAudience(t *testing.T) {
-	RegisterTestingT(t)
-
-	ctx := generateServiceAcctTokenCtx("client_id", "openid")
-
-	middleware := NewTokenValidationMiddleware(DefaultApprovedAudiences, nil, nil)
-	Expect(middleware).NotTo(BeNil())
-
-	err := middleware.ValidateAudience(ctx)
-	Expect(err).NotTo(HaveOccurred())
-
-	ctx = generateServiceAcctTokenCtx("clientId", "openid")
-
-	err = middleware.ValidateAudience(ctx)
-	Expect(err).NotTo(HaveOccurred())
-}
 
 func TestValidRequiredScopes(t *testing.T) {
 	RegisterTestingT(t)
 
-	ctx := generateBasicTokenCtx("", "openid api.ocm")
+	ctx := generateBasicTokenCtx("openid api.ocm", "123456")
 
-	middleware := NewTokenValidationMiddleware(nil, nil, []string{"api.ocm"})
-	Expect(middleware).NotTo(BeNil())
+	middleware := TokenScopeValidationMiddleware{
+		RequiredScopes: []string{"api.ocm"},
+	}
 
 	err := middleware.ValidateScopes(ctx)
 	Expect(err).NotTo(HaveOccurred())
@@ -95,10 +36,11 @@ func TestValidRequiredScopes(t *testing.T) {
 func TestInvalidRequiredScopes(t *testing.T) {
 	RegisterTestingT(t)
 
-	ctx := generateBasicTokenCtx("", "openid")
+	ctx := generateBasicTokenCtx("openid", "123456")
 
-	middleware := NewTokenValidationMiddleware(nil, nil, []string{"api.ocm"})
-	Expect(middleware).NotTo(BeNil())
+	middleware := TokenScopeValidationMiddleware{
+		RequiredScopes: []string{"api.ocm"},
+	}
 
 	err := middleware.ValidateScopes(ctx)
 	Expect(err).To(HaveOccurred())
@@ -109,10 +51,11 @@ func TestInvalidRequiredScopes(t *testing.T) {
 func TestValidDenyScopes(t *testing.T) {
 	RegisterTestingT(t)
 
-	ctx := generateBasicTokenCtx("", "openid api.ocm")
+	ctx := generateBasicTokenCtx("openid api.ocm", "123456")
 
-	middleware := NewTokenValidationMiddleware(nil, []string{"offline_access"}, nil)
-	Expect(middleware).NotTo(BeNil())
+	middleware := TokenScopeValidationMiddleware{
+		DenyScopes: []string{"offline_access"},
+	}
 
 	err := middleware.ValidateScopes(ctx)
 	Expect(err).NotTo(HaveOccurred())
@@ -122,10 +65,11 @@ func TestValidDenyScopes(t *testing.T) {
 func TestInvalidDenyScopes(t *testing.T) {
 	RegisterTestingT(t)
 
-	ctx := generateBasicTokenCtx("", "openid api.ocm offline_access")
+	ctx := generateBasicTokenCtx("openid api.ocm offline_access", "123456")
 
-	middleware := NewTokenValidationMiddleware(nil, []string{"offline_access"}, nil)
-	Expect(middleware).NotTo(BeNil())
+	middleware := TokenScopeValidationMiddleware{
+		DenyScopes: []string{"offline_access"},
+	}
 
 	err := middleware.ValidateScopes(ctx)
 	Expect(err).To(HaveOccurred())
@@ -137,8 +81,9 @@ func TestServiceAccountNoScopeValidation(t *testing.T) {
 
 	ctx := generateServiceAcctTokenCtx("client_id", "openid")
 
-	middleware := NewTokenValidationMiddleware(nil, nil, []string{"api.ocm"})
-	Expect(middleware).NotTo(BeNil())
+	middleware := TokenScopeValidationMiddleware{
+		DenyScopes: []string{"offline_access"},
+	}
 
 	err := middleware.ValidateScopes(ctx)
 	Expect(err).NotTo(HaveOccurred())
@@ -149,9 +94,10 @@ func TestServiceAccountWithScopeValidationPass(t *testing.T) {
 
 	ctx := generateServiceAcctTokenCtx("clientId", "openid api.ocm")
 
-	middleware := NewTokenValidationMiddleware(nil, nil, []string{"api.ocm"})
-	Expect(middleware).NotTo(BeNil())
-	middleware.EnforceServiceAccountScopes = true
+	middleware := TokenScopeValidationMiddleware{
+		DenyScopes:                  []string{"offline_access"},
+		EnforceServiceAccountScopes: true,
+	}
 
 	err := middleware.ValidateScopes(ctx)
 	Expect(err).NotTo(HaveOccurred())
@@ -162,34 +108,25 @@ func TestServiceAccountWithScopeValidationFail(t *testing.T) {
 
 	ctx := generateServiceAcctTokenCtx("client_id", "openid")
 
-	middleware := NewTokenValidationMiddleware(nil, nil, []string{"api.ocm"})
-	Expect(middleware).NotTo(BeNil())
-	middleware.EnforceServiceAccountScopes = true
+	middleware := TokenScopeValidationMiddleware{
+		RequiredScopes:              []string{"api.ocm"},
+		EnforceServiceAccountScopes: true,
+	}
 
 	err := middleware.ValidateScopes(ctx)
 	Expect(err).To(HaveOccurred())
 	Expect(errors.Unwrap(err)).To(Equal(ErrMissingRequiredScopes))
 }
 
-func TestCognitoValidation(t *testing.T) {
-	RegisterTestingT(t)
-
-	ctx := generateCognitoTokenCtx()
-
-	middleware := NewTokenValidationMiddleware(DefaultApprovedAudiences, nil, nil)
-	Expect(middleware).NotTo(BeNil())
-
-	err := middleware.ValidateScopes(ctx)
-	Expect(err).NotTo(HaveOccurred())
-}
-
 func TestValidateAll(t *testing.T) {
 	RegisterTestingT(t)
 
-	ctx := generateBasicTokenCtx("", "openid api.ocm")
+	ctx := generateBasicTokenCtx("openid api.ocm", "123456")
 
-	middleware := NewTokenValidationMiddleware(nil, []string{"offline_access"}, []string{"api.ocm"})
-	Expect(middleware).NotTo(BeNil())
+	middleware := TokenScopeValidationMiddleware{
+		DenyScopes:     []string{"offline_access"},
+		RequiredScopes: []string{"api.ocm"},
+	}
 
 	err := middleware.ValidateAll(ctx)
 	Expect(err).NotTo(HaveOccurred())
@@ -201,27 +138,58 @@ func TestMiddlewareValidate(t *testing.T) {
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		Expect(r.Method).To(Equal(http.MethodGet))
 	})
-	middleware := NewTokenValidationMiddleware(nil, []string{"offline_access"}, []string{"api.ocm"}).Handler(nextHandler)
+
+	middleware := TokenScopeValidationMiddleware{
+		DenyScopes:     []string{"offline_access"},
+		RequiredScopes: []string{"api.ocm"},
+	}
+
+	router := middleware.Handler(nextHandler)
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	recorder := httptest.NewRecorder()
 
-	ctx := generateBasicTokenCtx("", "openid api.ocm")
+	ctx := generateBasicTokenCtx("openid api.ocm", "123456")
 	request = request.WithContext(ctx)
-	middleware.ServeHTTP(recorder, request)
+	router.ServeHTTP(recorder, request)
 	Expect(recorder.Code).To(Equal(http.StatusOK))
 }
 
-func TestMiddlewareValidateNoContext(t *testing.T) {
+func TestMiddlewareValidateAllowMissingTokens(t *testing.T) {
+	RegisterTestingT(t)
+
+	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		Expect(r.Method).To(Equal(http.MethodGet))
+	})
+	middleware := TokenScopeValidationMiddleware{
+		DenyScopes:     []string{"offline_access"},
+		RequiredScopes: []string{"api.ocm"},
+	}
+
+	router := middleware.Handler(nextHandler)
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, request)
+	Expect(recorder.Code).To(Equal(http.StatusOK))
+}
+
+func TestMiddlewareValidateErrorOnMissingTokens(t *testing.T) {
 	RegisterTestingT(t)
 
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fail() // Should not be called
 	})
-	middleware := NewTokenValidationMiddleware([]string{""}, []string{"offline_access"}, []string{"api.ocm"}).Handler(nextHandler)
+	middleware := TokenScopeValidationMiddleware{
+		ErrorOnMissingToken: true,
+		DenyScopes:          []string{"offline_access"},
+		RequiredScopes:      []string{"api.ocm"},
+	}
+
+	router := middleware.Handler(nextHandler)
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	recorder := httptest.NewRecorder()
 
-	middleware.ServeHTTP(recorder, request)
+	router.ServeHTTP(recorder, request)
 	Expect(recorder.Code).To(Equal(http.StatusUnauthorized))
 }
 
@@ -231,14 +199,17 @@ func TestMiddlewareValidateWithCallbackPassthrough(t *testing.T) {
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		Expect(r.Method).To(Equal(http.MethodGet))
 	})
-	middleware := NewTokenValidationMiddleware(nil, []string{"offline_access"}, []string{"api.ocm"})
-	middleware.CallbackFn = callback
+	middleware := TokenScopeValidationMiddleware{
+		DenyScopes:     []string{"offline_access"},
+		RequiredScopes: []string{"api.ocm"},
+		CallbackFn:     callback,
+	}
 
 	handler := middleware.Handler(nextHandler)
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	recorder := httptest.NewRecorder()
 
-	ctx := generateBasicTokenCtx("", "openid api.ocm")
+	ctx := generateBasicTokenCtx("openid api.ocm", "123456")
 	request = request.WithContext(ctx)
 	handler.ServeHTTP(recorder, request)
 	Expect(recorder.Code).To(Equal(http.StatusOK))
@@ -250,24 +221,249 @@ func TestMiddlewareValidateWithCallbackError(t *testing.T) {
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		Expect(r.Method).To(Equal(http.MethodGet))
 	})
-	middleware := NewTokenValidationMiddleware([]string{""}, []string{"offline_access"}, []string{"api.ocm"})
-	middleware.CallbackFn = callbackExpectError
+	middleware := TokenScopeValidationMiddleware{
+		DenyScopes:     []string{"offline_access"},
+		RequiredScopes: []string{"api.ocm"},
+		CallbackFn:     callbackExpectError,
+	}
 
 	handler := middleware.Handler(nextHandler)
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	recorder := httptest.NewRecorder()
 
-	ctx := generateBasicTokenCtx("", "openid")
+	ctx := generateBasicTokenCtx("openid", "123456")
 	request = request.WithContext(ctx)
 	handler.ServeHTTP(recorder, request)
 	// Test the status came from the callback and not the middleware
 	Expect(recorder.Code).To(Equal(http.StatusForbidden))
 }
 
-func generateBasicTokenCtx(aud interface{}, scope string) context.Context {
+func TestMiddlewareValidateOfflineAccessByOrganization(t *testing.T) {
+	RegisterTestingT(t)
+
+	// Setup orgs
+	org1, err := v1.NewOrganization().ID("1a2b3c4d5e6f").ExternalID("123456").Build()
+	Expect(err).NotTo(HaveOccurred())
+	org2, err := v1.NewOrganization().ID("7g8h9i0j1k2l").ExternalID("123457").Build()
+	Expect(err).NotTo(HaveOccurred())
+	org1ExId := org1.ExternalID()
+	org2ExId := org2.ExternalID()
+
+	organizations := []v1.Organization{*org1}
+
+	// Mocking AMS responses
+	apiServer := MakeTCPServer()
+	apiServer.AppendHandlers(
+		RespondWithJSON(http.StatusOK, generateBasicLabelResponseJSON(organizations)),
+		RespondWithJSON(http.StatusOK, generateBasicOrganizationResponseJSON(organizations)),
+	)
+
+	saToken, err := authentication.TokenFromContext(generateBasicTokenCtx("openid", "111111")) // service account mock
+	Expect(err).NotTo(HaveOccurred())
+
+	signedSaToken, _ := saToken.SignedString([]byte("secret"))
+
+	// Mocking SSO responses
+	ssoServer := MakeTCPServer()
+	ssoServer.AppendHandlers(
+		RespondWithJSON(http.StatusOK, fmt.Sprintf(`{"access_token": "%s"}`, signedSaToken)),
+	)
+
+	testSuiteSpec := test.NewMockTestSuiteSpec(apiServer.URL(), ssoServer.URL())
+	suite, err := test.BuildTestSuite(testSuiteSpec)
+	Expect(suite).NotTo(BeNil())
+	Expect(err).To(BeNil())
+
+	middleware := TokenScopeValidationMiddleware{
+		Connection:                    suite.Connection(),
+		EnforceOfflineOrgRestrictions: true,
+		PollingIntervalOverride:       3 * time.Second,
+		CallbackFn:                    callbackExpectError,
+	}
+
+	// Valid Base URL & Organizations
+	stopPolling := middleware.StartPollingAMSForRestrictedOrgs()
+	defer stopPolling()
+	Expect(middleware.offlineRestrictedOrgs).To(HaveLen(1))
+	Expect(middleware.isOrgRestrictedSafe(org1ExId)).To(BeTrue())
+	Expect(middleware.isOrgRestrictedSafe(org2ExId)).To(BeFalse()) // Not included yet
+
+	// Add org2 to the list of organizations
+	organizations = append(organizations, *org2)
+	labelResponse := generateBasicLabelResponseJSON(organizations)
+	orgResponse := generateBasicOrganizationResponseJSON(organizations)
+	apiServer.AppendHandlers(
+		RespondWithJSON(http.StatusOK, labelResponse),
+		RespondWithJSON(http.StatusOK, orgResponse),
+	)
+	time.Sleep(5 * time.Second)
+	Expect(middleware.getOfflineRestrictedOrgCountSafe()).To(Equal(2))
+	Expect(middleware.isOrgRestrictedSafe(org1ExId)).To(BeTrue())
+	Expect(middleware.isOrgRestrictedSafe(org2ExId)).To(BeTrue()) // Now included
+
+	// Validate that the middleware is enforcing the org restrictions
+	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fail() // Should not be called
+	})
+
+	// Validate with the offline_access scope
+	handler := middleware.Handler(nextHandler)
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	recorder := httptest.NewRecorder()
+	ctx := generateBasicTokenCtx("openid offline_access", "123456")
+	request = request.WithContext(ctx)
+	handler.ServeHTTP(recorder, request)
+	// Test the status came from the callback and not the middleware
+	Expect(recorder.Code).To(Equal(http.StatusForbidden))
+	Expect(recorder.Body.String()).To(ContainSubstring("offline access is restricted for organization"))
+
+	// Validate without the offline_access scope
+	middleware.CallbackFn = callback
+	nextHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		Expect(r.Method).To(Equal(http.MethodGet))
+	})
+	handler = middleware.Handler(nextHandler)
+	ctx = generateBasicTokenCtx("openid", "123456")
+	request = request.WithContext(ctx)
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	Expect(recorder.Code).To(Equal(http.StatusOK))
+
+	// Validate offline access works for a non-restricted org
+	ctx = generateBasicTokenCtx("openid offline_access", "123458")
+	err = middleware.ValidateOfflineAccessByOrg(ctx)
+	Expect(err).NotTo(HaveOccurred())
+}
+
+func TestMiddlewareValidateOfflineAccessByOrganizationFailOpen(t *testing.T) {
+	RegisterTestingT(t)
+
+	// Mocking AMS responses
+	apiServer := MakeTCPServer()
+	apiServer.AppendHandlers(
+		RespondWithJSON(http.StatusUnauthorized, `error`),
+		RespondWithJSON(http.StatusUnauthorized, `error`),
+		RespondWithJSON(http.StatusUnauthorized, `error`),
+		RespondWithJSON(http.StatusUnauthorized, `error`),
+		RespondWithJSON(http.StatusUnauthorized, `error`),
+		RespondWithJSON(http.StatusUnauthorized, `error`),
+	)
+
+	// Mocking SSO responses
+	saToken, err := authentication.TokenFromContext(generateBasicTokenCtx("openid", "111111")) // service account mock
+	Expect(err).NotTo(HaveOccurred())
+	signedSaToken, _ := saToken.SignedString([]byte("secret"))
+	ssoServer := MakeTCPServer()
+	ssoServer.AppendHandlers(
+		RespondWithJSON(http.StatusOK, fmt.Sprintf(`{"access_token": "%s"}`, signedSaToken)),
+	)
+
+	testSuiteSpec := test.NewMockTestSuiteSpec(apiServer.URL(), ssoServer.URL())
+	suite, err := test.BuildTestSuite(testSuiteSpec)
+	Expect(suite).NotTo(BeNil())
+	Expect(err).To(BeNil())
+
+	middleware := TokenScopeValidationMiddleware{
+		Connection:                    suite.Connection(),
+		EnforceOfflineOrgRestrictions: true,
+		PollingIntervalOverride:       3 * time.Second,
+	}
+
+	// Invalid responses from AMS
+	stopPolling := middleware.StartPollingAMSForRestrictedOrgs()
+	defer stopPolling()
+	Expect(middleware.getOfflineRestrictedOrgCountSafe()).To(Equal(0))
+
+	nextHandlerCalled := false
+	// Validate that the middleware is NOT enforcing the org restrictions
+	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextHandlerCalled = true
+		Expect(r.Method).To(Equal(http.MethodGet))
+	})
+
+	// Validate with the offline_access scope
+	handler := middleware.Handler(nextHandler)
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	recorder := httptest.NewRecorder()
+	ctx := generateBasicTokenCtx("openid offline_access", "123456")
+	request = request.WithContext(ctx)
+	handler.ServeHTTP(recorder, request)
+	Expect(recorder.Code).To(Equal(http.StatusOK))
+	Expect(nextHandlerCalled).To(BeTrue())
+	nextHandlerCalled = false
+
+	// Validate without the offline_access scope
+	middleware.CallbackFn = callback
+	handler = middleware.Handler(nextHandler)
+	ctx = generateBasicTokenCtx("openid", "123456")
+	request = request.WithContext(ctx)
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	Expect(recorder.Code).To(Equal(http.StatusOK))
+	Expect(nextHandlerCalled).To(BeTrue())
+}
+
+// Tests that if the middleware is applied on an endpoint using cloud.openshift.com pull secret authentication
+// that we do not fail when `ErrorOnMissingToken` is false
+func TestMiddlewareGracefulHandlingAccessTokenPullSecret(t *testing.T) {
+	RegisterTestingT(t)
+
+	// Setup orgs
+	org1, err := v1.NewOrganization().ID("1a2b3c4d5e6f").ExternalID("123456").Build()
+	Expect(err).NotTo(HaveOccurred())
+
+	organizations := []v1.Organization{*org1}
+
+	// Mocking AMS responses
+	apiServer := MakeTCPServer()
+	apiServer.AppendHandlers(
+		RespondWithJSON(http.StatusOK, generateBasicLabelResponseJSON(organizations)),
+		RespondWithJSON(http.StatusOK, generateBasicOrganizationResponseJSON(organizations)),
+	)
+
+	// Mocking SSO responses
+	saToken, err := authentication.TokenFromContext(generateBasicTokenCtx("openid", "111111")) // service account mock
+	Expect(err).NotTo(HaveOccurred())
+	signedSaToken, _ := saToken.SignedString([]byte("secret"))
+	ssoServer := MakeTCPServer()
+	ssoServer.AppendHandlers(
+		RespondWithJSON(http.StatusOK, fmt.Sprintf(`{"access_token": "%s"}`, signedSaToken)),
+	)
+
+	testSuiteSpec := test.NewMockTestSuiteSpec(apiServer.URL(), ssoServer.URL())
+	suite, err := test.BuildTestSuite(testSuiteSpec)
+	Expect(suite).NotTo(BeNil())
+	Expect(err).To(BeNil())
+
+	middleware := TokenScopeValidationMiddleware{
+		Connection:                    suite.Connection(),
+		EnforceOfflineOrgRestrictions: true,
+		PollingIntervalOverride:       3 * time.Second,
+		CallbackFn:                    callback,
+	}
+
+	stopPolling := middleware.StartPollingAMSForRestrictedOrgs()
+	defer stopPolling()
+
+	nextHandlerCalled := false
+	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextHandlerCalled = true
+	})
+
+	handler := middleware.Handler(nextHandler)
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	clusterUUID := uuid.New()
+	base64Secret := "Zm9vYmFyLWZvb2Jhcg==" // foobar-foobar
+	request.Header.Set("Authorization", fmt.Sprintf("AccessToken %s:%s", clusterUUID, base64Secret))
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	Expect(nextHandlerCalled).To(BeTrue())
+}
+
+func generateBasicTokenCtx(scope string, orgId string) context.Context {
 	claims := jwt.MapClaims{
-		"aud":   aud,
-		"scope": scope,
+		"scope":  scope,
+		"org_id": orgId,
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return authentication.ContextWithToken(context.Background(), token)
@@ -284,14 +480,35 @@ func generateServiceAcctTokenCtx(clientIdKey string, scope string) context.Conte
 	return authentication.ContextWithToken(context.Background(), token)
 }
 
-// Generates a cognito token context
-func generateCognitoTokenCtx() context.Context {
-	claims := jwt.MapClaims{
-		"client_id": "1234",
-		"scope":     "gateway/AccessToken openid",
+func generateBasicLabelResponseJSON(orgs []v1.Organization) string {
+	items := make([]string, len(orgs))
+
+	for i, org := range orgs {
+		items[i] = `{
+            "internal":true,
+            "key":"` + OfflineAccessCapabilityKey + `",
+            "organization_id":"` + org.ID() + `",
+            "value":"true"
+        }`
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return authentication.ContextWithToken(context.Background(), token)
+
+	return `{
+        "items": [` + strings.Join(items, ",") + `]
+    }`
+}
+func generateBasicOrganizationResponseJSON(orgs []v1.Organization) string {
+	items := make([]string, len(orgs))
+
+	for i, org := range orgs {
+		items[i] = `{
+            "external_id":"` + org.ExternalID() + `",
+            "id":"` + org.ID() + `"
+        }`
+	}
+
+	return `{
+        "items": [` + strings.Join(items, ",") + `]
+    }`
 }
 
 func callback(w http.ResponseWriter, r *http.Request, err error) {

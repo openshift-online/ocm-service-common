@@ -45,7 +45,8 @@ func (c *mockSdkConnector) Connect(spec *TestSuiteSpec) (*sdk.Connection, error)
 	}).Client("foo", "bar").Build()
 }
 
-/**
+/*
+*
 Connect creates a connection to the environment specified by the AOC_USER, AOC_PASSWORD and
 AOC_DOMAIN environment variables.
 
@@ -69,6 +70,10 @@ func (c *sdkConnector) Connect(spec *TestSuiteSpec) (*sdk.Connection, error) {
 	builder := sdk.NewConnectionBuilder().
 		Logger(logger).
 		URL(spec.BaseURL)
+
+	if spec.TokenURL != "" {
+		builder = builder.TokenURL(spec.TokenURL)
+	}
 
 	// If we don't have anything configured specifically for this test, attempt to rectify from the env
 	if spec.Token == "" && spec.ClientId == "" && spec.ClientSecret == "" {
@@ -118,6 +123,19 @@ func NewTestSuiteSpec() *TestSuiteSpec {
 		SdkConnector:     &sdkConnector{},
 		DefaultAccountID: "No default account ID set, or unknown environment. Please set in helpers.go",
 		Timeout:          5 * time.Minute,
+	}
+}
+
+func NewMockTestSuiteSpec(mockURL string, mockTokenURL string) *TestSuiteSpec {
+	return &TestSuiteSpec{
+		BaseURL:          mockURL,
+		TokenURL:         mockTokenURL,
+		SecretName:       "stage-creds",
+		SdkConnector:     &sdkConnector{},
+		DefaultAccountID: "No default account ID set, or unknown environment. Please set in helpers.go",
+		Timeout:          5 * time.Minute,
+		ClientId:         "mock-client",
+		ClientSecret:     "mock-secret",
 	}
 }
 

@@ -39,6 +39,7 @@ type TestSuiteSpec struct {
 	BeforeAllCallbacks []TestCallback
 	AfterAllCallbacks  []TestCallback
 	BaseURL            string
+	TokenURL           string
 	SecretName         string
 	ClientId           string
 	ClientSecret       string
