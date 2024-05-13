@@ -88,7 +88,7 @@ func GenerateGrafana(configFile string, outputFile string) {
 			for _, path := range paths {
 				exprAvailability, exprRequests,
 					exprErrors1, exprErrors2, exprError3,
-					exprDuration, exprLatency := prepareExpressions(config.Grafana.Service, skipSA, normalizePath(path), *panelItem.Exception)
+					exprDuration, exprLatency, exprLatencyByMethod, exprDurationByMethod, exprErrorsByMethod := prepareExpressions(config.Grafana.Service, skipSA, normalizePath(path), *panelItem.Exception)
 				rowNum++
 				panelId++
 				fldId, panel = createRegular(*datasource, path, rowNum, panelId, fldId,
@@ -98,6 +98,7 @@ func GenerateGrafana(configFile string, outputFile string) {
 					exprDuration,
 					exprLatency,
 				)
+				addByMethodPanelItems(&panel, fldId, exprLatencyByMethod, exprDurationByMethod, exprErrorsByMethod)
 				grafana.Panels = append(grafana.Panels, panel)
 			}
 
@@ -145,6 +146,179 @@ func createCustom(title string, datasource Datasource, panels []PanelItem, rowNu
 	}
 
 	return fldId, panel
+}
+
+func addByMethodPanelItems(panel *Panel, fldId int, exprLatencyByMethod string, exprDurationByMethod string, exprErrorsByMethod string) {
+	panels := []PanelItem{
+		{
+			Datasource: &Datasource{
+				Uid: toPtr("$datasource"),
+			},
+			Description: toPtr("The percentage of time that the API responds within 1 second."),
+			FieldConfig: &FieldConfig{
+				Defaults: &Defaults{
+					Color: &Color{
+						Mode: toPtr("thresholds"),
+					},
+					Mappings: &[]Mapping{},
+					Thresholds: &Threshold{
+						Mode: toPtr("absolute"),
+						Steps: &[]Step{
+							{
+								Color: toPtr("dark-red"),
+								Value: toPtr(float32(0)),
+							},
+							{
+								Color: toPtr("dark-green"),
+								Value: toPtr(float32(0.99)),
+							},
+						},
+					},
+					Unit:      toPtr("percentunit"),
+					Overrides: nil,
+					Min:       toPtr(0),
+					Max:       toPtr(1),
+				},
+			},
+			GridPos: GridPos{
+				H: 8,
+				W: 10,
+				X: 0,
+				Y: 28,
+			},
+			Id:            fldId + 1,
+			MaxDataPoints: toPtr(100),
+			Options: &Options{
+				Orientation: toPtr("vertical"),
+				DisplayMode: toPtr("basic"),
+				ColorMode:   toPtr("value"),
+				GraphMode:   toPtr("none"),
+				JustifyMode: toPtr("auto"),
+				ReduceOptions: &ReduceOptions{
+					Calcs:  &[]string{"lastNotNull"},
+					Fields: toPtr(""),
+					Values: toPtr(false),
+				},
+				TextMode: toPtr("auto"),
+			},
+			PluginVersion: toPtr("8.5.2"),
+			Targets: []Target{
+				{
+					Expr:         exprLatencyByMethod,
+					Format:       toPtr("heatmap"),
+					Instant:      toPtr(true),
+					LegendFormat: toPtr("__auto"),
+					RefId:        "A",
+				},
+			},
+			Title: toPtr("Latency (< 1s) by method"),
+			Type:  toPtr("bargauge"),
+		},
+		{
+			Datasource: &Datasource{
+				Uid: toPtr("$datasource"),
+			},
+			Description: toPtr("The error percentage."),
+			FieldConfig: &FieldConfig{
+				Defaults: &Defaults{
+					Custom: &Custom{
+						LineWidth: 1,
+						PointSize: 5,
+						ScaleDistribution: &ScaleDistribution{
+							Type: "linear",
+						},
+						ShowPoints: "never",
+					},
+					Unit: toPtr("percentunit"),
+				},
+				Overrides: &[]Overrides{},
+			},
+			GridPos: GridPos{
+				H: 8,
+				W: 7,
+				X: 10,
+				Y: 1,
+			},
+			Id: fldId + 2,
+			Options: &Options{
+				LegendOptions: &LegendOptions{
+					Calcs:       &[]string{},
+					DisplayMode: toPtr("list"),
+					Placement:   toPtr("bottom"),
+					ShowLegend:  toPtr(true),
+				},
+				TooltipOptions: &TooltipOptions{
+					Mode: toPtr("multi"),
+					Sort: toPtr("none"),
+				},
+			},
+			PluginVersion: toPtr("10.4.1"),
+			Targets: []Target{
+				{
+					Expr:         exprErrorsByMethod,
+					LegendFormat: toPtr("__auto"),
+					RefId:        "A",
+				},
+			},
+			Title: toPtr("Errors 500 by method"),
+			Type:  toPtr("timeseries"),
+		},
+		{
+			Datasource: &Datasource{
+				Uid: toPtr("$datasource"),
+			},
+			Description: toPtr("The request duration within which the API have served 99%, 95%, 50% of requests"),
+			FieldConfig: &FieldConfig{
+				Defaults: &Defaults{
+					Custom: &Custom{
+						LineWidth:   1,
+						PointSize:   5,
+						FillOpacity: 10,
+						ScaleDistribution: &ScaleDistribution{
+							Type: "log",
+							Log:  10,
+						},
+						ShowPoints: "never",
+					},
+					Unit: toPtr("s"),
+				},
+				Overrides: &[]Overrides{},
+			},
+			GridPos: GridPos{
+				H: 8,
+				W: 7,
+				X: 17,
+				Y: 1,
+			},
+			Id: fldId + 3,
+			Options: &Options{
+				LegendOptions: &LegendOptions{
+					Calcs:       &[]string{},
+					DisplayMode: toPtr("list"),
+					Placement:   toPtr("bottom"),
+					ShowLegend:  toPtr(true),
+				},
+				TooltipOptions: &TooltipOptions{
+					Mode: toPtr("multi"),
+					Sort: toPtr("none"),
+				},
+			},
+			PluginVersion: toPtr("10.4.1"),
+			Targets: []Target{
+				{
+					Expr:         exprDurationByMethod,
+					Interval:     toPtr(""),
+					LegendFormat: toPtr("__auto"),
+					RefId:        "A",
+				},
+			},
+			Title: toPtr("Duration by method"),
+			Type:  toPtr("timeseries"),
+		},
+	}
+	for _, newPanel := range panels {
+		panel.Panels = append(panel.Panels, newPanel)
+	}
 }
 
 func createRegular(datasource Datasource, title string, rowNum int, panelId int, fldId int,
@@ -543,7 +717,7 @@ func normalizePath(path string) string {
 	return reNormalizePath.ReplaceAllString(path, "-")
 }
 
-func prepareExpressions(service string, skipServiceAccount bool, path string, exception Exception) (string, string, string, string, *string, string, string) {
+func prepareExpressions(service string, skipServiceAccount bool, path string, exception Exception) (string, string, string, string, *string, string, string, string, string, string) {
 	exprAvailability := fmt.Sprintf(`
 sum(increase(api_inbound_request_count{namespace="$namespace",service=~"%s",path="%s",code!~"5..|0"SA}[$__range]))
 /
@@ -583,6 +757,24 @@ sum(increase(api_inbound_request_duration_bucket{namespace="$namespace",service=
 sum(increase(api_inbound_request_duration_count{namespace="$namespace",service=~"%s",path="%s",code!~"5..|0"SA}[$__range]))
 `,
 		service, path, service, path)
+	exprLatencyByMethod := fmt.Sprintf(`
+sum by (method)(increase(api_inbound_request_duration_bucket{namespace="$namespace",service=~"%s",path="%s",le="1"SA}[$__range]))
+/
+sum by (method)(increase(api_inbound_request_duration_count{namespace="$namespace",service=~"%s",path="%s"SA}[$__range]))
+`,
+		service, path, service, path)
+	exprDurationByMethod := fmt.Sprintf(`
+sum by (method) (increase(api_inbound_request_duration_sum{namespace="$namespace",service=~"%s",path="%s",code!~"5..|0"SA}[$__range]))
+/
+sum by (method) (increase(api_inbound_request_duration_count{namespace="$namespace",service=~"%s",path="%s",code!~"5..|0"SA}[$__range]))
+`,
+		service, path, service, path)
+	exprErrorsByMethod := fmt.Sprintf(`
+sum by (method) (rate(api_inbound_request_count{namespace="$namespace",service=~"%s",path="%s",code=~"5..|0"SA}[$__range]))
+/
+sum by (method) (rate(api_inbound_request_count{namespace="$namespace",service=~"%s",path="%s"SA}[$__range]))
+`,
+		service, path, service, path)
 
 	var exprError3 *string
 	if strings.Contains(path, exception.Path) {
@@ -604,6 +796,9 @@ sum (rate(api_inbound_request_count{namespace="$namespace",service=~"%s",path="%
 		*exprError3 = strings.ReplaceAll(*exprError3, "SA", "")
 		exprDuration = strings.ReplaceAll(exprDuration, "SA", "")
 		exprLatency = strings.ReplaceAll(exprLatency, "SA", "")
+		exprLatencyByMethod = strings.ReplaceAll(exprLatencyByMethod, "SA", "")
+		exprDurationByMethod = strings.ReplaceAll(exprDurationByMethod, "SA", "")
+		exprErrorsByMethod = strings.ReplaceAll(exprErrorsByMethod, "SA", "")
 	} else {
 		exprAvailability = strings.ReplaceAll(exprAvailability, "SA", ",service_account=~\"$account\"")
 		exprRequests = strings.ReplaceAll(exprRequests, "SA", ",service_account=~\"$account\"")
@@ -612,9 +807,12 @@ sum (rate(api_inbound_request_count{namespace="$namespace",service=~"%s",path="%
 		*exprError3 = strings.ReplaceAll(*exprError3, "SA", ",service_account=~\"$account\"")
 		exprDuration = strings.ReplaceAll(exprDuration, "SA", ",service_account=~\"$account\"")
 		exprLatency = strings.ReplaceAll(exprLatency, "SA", ",service_account=~\"$account\"")
+		exprLatencyByMethod = strings.ReplaceAll(exprLatencyByMethod, "SA", ",service_account=~\"$account\"")
+		exprDurationByMethod = strings.ReplaceAll(exprDurationByMethod, "SA", ",service_account=~\"$account\"")
+		exprErrorsByMethod = strings.ReplaceAll(exprErrorsByMethod, "SA", ",service_account=~\"$account\"")
 	}
 
-	return exprAvailability, exprRequests, exprErrors1, exprErrors2, exprError3, exprDuration, exprLatency
+	return exprAvailability, exprRequests, exprErrors1, exprErrors2, exprError3, exprDuration, exprLatency, exprLatencyByMethod, exprDurationByMethod, exprErrorsByMethod
 }
 
 func loadConfig(configFile string) (*Config, error) {
