@@ -65,8 +65,8 @@ var (
 
 	rootLogger zerolog.Logger // root logger used by our application
 
-	// log.Info("foo") -> OCMLogger.Info -> OCMLogger.log -> OCMLogger.hydrateLog -> log library ...
-	// If we don't provide a base offset of 3, it will appear as if all logs are coming from OCMLogger.hydrateLog
+	// log.Info("foo") -> OCMLogger.Info -> OCMLogger.log -> OCMLogger.createLogEvent -> log library ...
+	// If we don't provide a base offset of 3, it will appear as if all logs are coming from OCMLogger.createLogEvent
 	baseCallerSkipLevel = 3
 
 	trimList = []string{"pkg"}
@@ -277,6 +277,9 @@ func (l *logger) log(level zerolog.Level, args ...any) {
 		captureSentry = *l.captureSentryEventOverride
 	}
 
+	// make sure we have all the extras from the context before trying to capture the sentry event
+	l.populateExtrasFromContext()
+
 	if captureSentry {
 		sentryId := l.tryCaptureSentryEvent(level, message, args...)
 		if sentryId != nil {
@@ -284,7 +287,7 @@ func (l *logger) log(level zerolog.Level, args ...any) {
 		}
 	}
 
-	event := l.hydrateLog(level)
+	event := l.createLogEvent(level)
 
 	if event.Enabled() {
 		event.Msgf(message, args...)
@@ -348,17 +351,19 @@ func (l *logger) tryCaptureSentryEvent(level zerolog.Level, message string, args
 	return sentryHub.CaptureEvent(event)
 }
 
-func (l *logger) hydrateLog(level zerolog.Level) *zerolog.Event {
-	event := rootLogger.WithLevel(level).
-		Caller(baseCallerSkipLevel + l.additionalCallLevelSkips).
-		Err(l.err)
-
+func (l *logger) populateExtrasFromContext() {
 	for k, callback := range retrieveExtraFromContextCallbacks {
 		if callback != nil {
 			v := callback(l.ctx)
 			l.Extra(k, v)
 		}
 	}
+}
+
+func (l *logger) createLogEvent(level zerolog.Level) *zerolog.Event {
+	event := rootLogger.WithLevel(level).
+		Caller(baseCallerSkipLevel + l.additionalCallLevelSkips).
+		Err(l.err)
 
 	if len(l.extra) > 0 {
 		dict := zerolog.Dict()
