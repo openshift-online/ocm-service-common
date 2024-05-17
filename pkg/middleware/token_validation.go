@@ -16,12 +16,17 @@ import (
 	sdk "github.com/openshift-online/ocm-sdk-go"
 	v1 "github.com/openshift-online/ocm-sdk-go/accountsmgmt/v1"
 	"github.com/openshift-online/ocm-sdk-go/authentication"
+	authv1 "github.com/openshift-online/ocm-sdk-go/authorizations/v1"
+	"github.com/pkg/errors"
 
 	logger "gitlab.cee.redhat.com/service/ocm-common/pkg/ocmlogger"
 	util "gitlab.cee.redhat.com/service/ocm-common/utils"
 )
 
 const (
+	// Feature flag that enables enforcing offline token restriction
+	FlagEnforceOfflineTokenRestrictions = "enforce-offline-token-restrictions"
+	// Controls an organizations ability to use offline tokens, if the above flag is enabled
 	OfflineAccessCapabilityKey = "capability.organization.restrict_offline_tokens"
 	ScopeOfflineAccess         = "offline_access"
 	ClaimOrgId                 = "org_id"
@@ -36,6 +41,7 @@ var (
 	ErrUnauthorizedScopes    = fmt.Errorf("token contains unauthorized scopes")
 	ErrMissingRequiredScopes = fmt.Errorf("token is missing required scopes")
 	ErrMissingToken          = fmt.Errorf("missing token in context")
+	ErrMissingSDKConnection  = fmt.Errorf("OCM SDK connection is missing")
 )
 
 type TokenScopeValidationMiddlewareImpl interface {
@@ -66,12 +72,11 @@ type TokenScopeValidationMiddlewareImpl interface {
 //   - CallbackFn: An optional function that can allow for custom logging or error handling post-validation.
 //     The middleware will always call this function if provided.
 //   - EnforceServiceAccountScopes: If true, the middleware will enforce the required and deny scopes on service accounts.
-//   - EnforceOfflineOrgRestrictions: If true, the middleware will enforce offline access restrictions based on the
-//     organization in the token. This requires the OCM base URL to be set and StartPollingAMSForRestrictedOrgs to be called.
 //   - PollingIntervalOverride: Optional override for the default 15 minute polling interval for offline org restrictions.
 type TokenScopeValidationMiddleware struct {
 	mu                            sync.Mutex // safe "concurrent" map access
 	offlineRestrictedOrgs         map[string]bool
+	enforceOfflineOrgRestrictions bool // Enabled via feature flag
 	Connection                    *sdk.Connection
 	DisableAllValidation          bool
 	ErrorOnMissingToken           bool
@@ -79,7 +84,6 @@ type TokenScopeValidationMiddleware struct {
 	RequiredScopes                []string
 	CallbackFn                    func(http.ResponseWriter, *http.Request, error)
 	EnforceServiceAccountScopes   bool
-	EnforceOfflineOrgRestrictions bool
 	PollingIntervalOverride       time.Duration
 }
 
@@ -135,7 +139,7 @@ func (t *TokenScopeValidationMiddleware) ValidateScopes(ctx context.Context) err
 	}
 
 	claims, err := tokenClaimsFromContext(ctx)
-	if !t.ErrorOnMissingToken && err == ErrMissingToken {
+	if !t.ErrorOnMissingToken && errors.Is(err, ErrMissingToken) {
 		// We did not find a token, and it was not due to bad token context
 		return nil
 	}
@@ -194,7 +198,7 @@ func (t *TokenScopeValidationMiddleware) ValidateScopes(ctx context.Context) err
 // Validates offline access for the organization in the token context
 // Requires the OCM SDK connection to be set and StartPollingAMSForRestrictedOrgs to be called.
 func (t *TokenScopeValidationMiddleware) ValidateOfflineAccessByOrg(ctx context.Context) error {
-	if t.DisableAllValidation || !t.EnforceOfflineOrgRestrictions {
+	if t.DisableAllValidation || !t.isOfflineOrgRestrictionsEnabledSafe() {
 		return nil
 	}
 
@@ -205,7 +209,7 @@ func (t *TokenScopeValidationMiddleware) ValidateOfflineAccessByOrg(ctx context.
 	}
 
 	claims, err := tokenClaimsFromContext(ctx)
-	if !t.ErrorOnMissingToken && err == ErrMissingToken {
+	if !t.ErrorOnMissingToken && errors.Is(err, ErrMissingToken) {
 		// We did not find a token, and it was not due to an error
 		return nil
 	}
@@ -252,17 +256,23 @@ func (t *TokenScopeValidationMiddleware) ValidateOfflineAccessByOrg(ctx context.
 	return nil
 }
 
-// Immediately populates the offline restricted orgs, then starts a polling
-// function to repeat the operation every 15 minutes. This should be called
-// once at the start of the application, before the server starts accepting requests.
+// Immediately populates the offline restricted orgs & feature flag, then starts a polling
+// function to repeat the operation. This should be called once at the start
+// of the application, before the server starts accepting requests.
 func (t *TokenScopeValidationMiddleware) StartPollingAMSForRestrictedOrgs() context.CancelFunc {
 	ulog := logger.NewOCMLogger(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
 
-	successfulInit, _ := withRetry(context.Background(), func() (bool, error) {
+	if t.Connection == nil {
+		ulog.Debug("OCM SDK connection is missing, offline token restrictions will not be enforced")
+		return cancel
+	}
+
+	successfulOrgInit, _ := withRetry(context.Background(), func() (bool, error) {
 		return t.populateOfflineRestrictedOrgs()
 	})
 
-	if successfulInit {
+	if successfulOrgInit {
 		ulog.Info("Successfully initialized offline access org restrictions, org list: %v total orgs",
 			t.getOfflineRestrictedOrgCountSafe())
 	} else {
@@ -273,25 +283,51 @@ func (t *TokenScopeValidationMiddleware) StartPollingAMSForRestrictedOrgs() cont
 		)
 	}
 
-	// Schedule the polling function to run every 15 minutes or the override duration
-	duration := 15 * time.Minute
+	successfulFlagInit, _ := withRetry(context.Background(), func() (bool, error) {
+		return t.checkEnforceOfflineOrgRestrictions()
+	})
+
+	enforceOfflineOrgRestrictions := t.isOfflineOrgRestrictionsEnabledSafe()
+
+	if successfulFlagInit {
+		ulog.Info("Successfully initialized offline enforcement flag: %t", enforceOfflineOrgRestrictions)
+	} else {
+		// Log and continue, the goroutine will attempt to self-heal.
+		// API requests will fail open and offline access will be allowed.
+		ulog.Error(
+			"Failed to initialize offline enforcement flag, restrictions will not be applied until self-healing occurs",
+		)
+	}
+
+	// Schedule the polling function to run every 5 minutes or the override duration
+	duration := 5 * time.Minute
 	if t.PollingIntervalOverride > 0 {
 		duration = t.PollingIntervalOverride
 	}
 	ulog.Info("Starting AMS polling for org restrictions every %v...", duration)
 
-	ctx, cancel := context.WithCancel(context.Background())
 	ticker := time.NewTicker(duration)
 	go func() {
 		for {
 			select {
 			case <-ticker.C:
+				// Populate the orgs
 				ulog.Info("Polling AMS for org restrictions...")
 				if _, err := t.populateOfflineRestrictedOrgs(); err != nil {
 					ulog.Error("Failed AMS polling for org restrictions: %v", err)
 					ulog.Info("Continuing to use existing org list: %d total orgs", t.getOfflineRestrictedOrgCountSafe())
 				} else {
 					ulog.Info("Successfully populated offline access org restrictions, org list: %d total orgs",
+						t.getOfflineRestrictedOrgCountSafe())
+				}
+
+				// Check the feature flag
+				ulog.Info("Checking feature flag for offline token enforcement...")
+				if _, err := t.checkEnforceOfflineOrgRestrictions(); err != nil {
+					ulog.Error("Failed to check feature flag for offline token enforcement: %v", err)
+					ulog.Info("Continuing to use existing flag value of %v", t.getOfflineRestrictedOrgCountSafe())
+				} else {
+					ulog.Info("Successfully checked feature flag for offline token enforcement, flag value: %v",
 						t.getOfflineRestrictedOrgCountSafe())
 				}
 			case <-ctx.Done():
@@ -304,10 +340,28 @@ func (t *TokenScopeValidationMiddleware) StartPollingAMSForRestrictedOrgs() cont
 	return cancel
 }
 
+// Checks the feature flag to enable offline org restrictions
+// Returns true if the operation was successful, false otherwise
+func (t *TokenScopeValidationMiddleware) checkEnforceOfflineOrgRestrictions() (bool, error) {
+	isFlagEnabled, err := t.isFeatureEnabled(context.Background(), FlagEnforceOfflineTokenRestrictions)
+	if errors.Is(err, ErrMissingSDKConnection) {
+		// Do not retry if we are missing the SDK connection
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	// Set the flag to enable offline org restrictions
+	t.setEnforceOfflineOrgRestrictionsSafe(isFlagEnabled)
+	return true, nil
+}
+
 // Populates t.offlineRestrictedOrgs map with the result from AMS labels and organizations API
+// Returns true if the operation was successful, false otherwise
 func (t *TokenScopeValidationMiddleware) populateOfflineRestrictedOrgs() (bool, error) {
 	if t.Connection == nil {
-		return false, fmt.Errorf("OCM SDK connection is required to poll for offline restricted orgs")
+		// Do not retry if we are missing the SDK connection
+		return true, nil
 	}
 	api := t.Connection.AccountsMgmt().V1()
 	labelResponse, err := api.Labels().List().Search(
@@ -318,7 +372,8 @@ func (t *TokenScopeValidationMiddleware) populateOfflineRestrictedOrgs() (bool, 
 		return false, err
 	}
 
-	if labelResponse == nil || labelResponse.Items() == nil {
+	if labelResponse == nil || labelResponse.Items() == nil ||
+		len(labelResponse.Items().Slice()) == 0 {
 		// No offline restricted orgs found
 		return true, nil
 	}
@@ -335,7 +390,8 @@ func (t *TokenScopeValidationMiddleware) populateOfflineRestrictedOrgs() (bool, 
 	}
 
 	// Fetch external org IDs to match on the JWT claim
-	orgResponse, err := api.Organizations().List().Search(fmt.Sprintf("id in (%s)", strings.Join(quotedOrganizations, ", "))).Send()
+	orgResponse, err := api.Organizations().List().
+		Search(fmt.Sprintf("id in (%s)", strings.Join(quotedOrganizations, ", "))).Send()
 	if err != nil {
 		return false, err
 	}
@@ -367,6 +423,40 @@ func (t *TokenScopeValidationMiddleware) setOfflineRestrictedOrgsSafe(offlineRes
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.offlineRestrictedOrgs = offlineRestrictedOrgs
+}
+
+func (t *TokenScopeValidationMiddleware) isOfflineOrgRestrictionsEnabledSafe() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.enforceOfflineOrgRestrictions
+}
+
+func (t *TokenScopeValidationMiddleware) setEnforceOfflineOrgRestrictionsSafe(enforceOfflineOrgRestrictions bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.enforceOfflineOrgRestrictions = enforceOfflineOrgRestrictions
+}
+
+func (t *TokenScopeValidationMiddleware) isFeatureEnabled(ctx context.Context, featureName string) (bool, error) {
+	if t.Connection == nil {
+		return false, ErrMissingSDKConnection
+	}
+	authorizations := t.Connection.Authorizations().V1()
+
+	builder := authv1.FeatureReviewRequestBuilder{}
+	request, err := builder.Feature(featureName).Build()
+	if err != nil {
+		return false, err
+	}
+	response, err := authorizations.FeatureReview().Post().Request(request).SendContext(ctx)
+	if err != nil {
+		return false, err
+	}
+	if response.Status() != http.StatusOK {
+		return false, errors.Errorf("got http %d trying to query AMS for feature review of feature '%s'",
+			response.Status(), featureName)
+	}
+	return response.Request().Enabled(), nil
 }
 
 // extracts the JSON web token of the user from the context. If no token is found
@@ -403,7 +493,7 @@ func isServiceAccount(claims jwt.MapClaims) bool {
 func withRetry(ctx context.Context, op func() (bool, error)) (bool, error) {
 	ulog := logger.NewOCMLogger(ctx)
 	retryInterval := 5 * time.Second
-	maxRetries := 3
+	maxRetries := 2
 
 	return util.NewRetry[bool]().
 		WithContext(ctx).

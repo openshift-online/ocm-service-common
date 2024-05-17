@@ -246,8 +246,6 @@ func TestMiddlewareValidateOfflineAccessByOrganization(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred())
 	org2, err := v1.NewOrganization().ID("7g8h9i0j1k2l").ExternalID("123457").Build()
 	Expect(err).NotTo(HaveOccurred())
-	org1ExId := org1.ExternalID()
-	org2ExId := org2.ExternalID()
 
 	organizations := []v1.Organization{*org1}
 
@@ -256,6 +254,7 @@ func TestMiddlewareValidateOfflineAccessByOrganization(t *testing.T) {
 	apiServer.AppendHandlers(
 		RespondWithJSON(http.StatusOK, generateBasicLabelResponseJSON(organizations)),
 		RespondWithJSON(http.StatusOK, generateBasicOrganizationResponseJSON(organizations)),
+		RespondWithJSON(http.StatusOK, generateFeatureResponseJSON(FlagEnforceOfflineTokenRestrictions, true)),
 	)
 
 	saToken, err := authentication.TokenFromContext(generateBasicTokenCtx("openid", "111111")) // service account mock
@@ -275,18 +274,18 @@ func TestMiddlewareValidateOfflineAccessByOrganization(t *testing.T) {
 	Expect(err).To(BeNil())
 
 	middleware := TokenScopeValidationMiddleware{
-		Connection:                    suite.Connection(),
-		EnforceOfflineOrgRestrictions: true,
-		PollingIntervalOverride:       3 * time.Second,
-		CallbackFn:                    callbackExpectError,
+		Connection:              suite.Connection(),
+		PollingIntervalOverride: 3 * time.Second,
+		CallbackFn:              callbackExpectError,
 	}
 
 	// Valid Base URL & Organizations
 	stopPolling := middleware.StartPollingAMSForRestrictedOrgs()
 	defer stopPolling()
+	Expect(middleware.isOfflineOrgRestrictionsEnabledSafe()).To(BeTrue())
 	Expect(middleware.offlineRestrictedOrgs).To(HaveLen(1))
-	Expect(middleware.isOrgRestrictedSafe(org1ExId)).To(BeTrue())
-	Expect(middleware.isOrgRestrictedSafe(org2ExId)).To(BeFalse()) // Not included yet
+	Expect(middleware.isOrgRestrictedSafe(org1.ExternalID())).To(BeTrue())
+	Expect(middleware.isOrgRestrictedSafe(org2.ExternalID())).To(BeFalse()) // Not included yet
 
 	// Add org2 to the list of organizations
 	organizations = append(organizations, *org2)
@@ -295,11 +294,13 @@ func TestMiddlewareValidateOfflineAccessByOrganization(t *testing.T) {
 	apiServer.AppendHandlers(
 		RespondWithJSON(http.StatusOK, labelResponse),
 		RespondWithJSON(http.StatusOK, orgResponse),
+		RespondWithJSON(http.StatusOK, generateFeatureResponseJSON(FlagEnforceOfflineTokenRestrictions, true)),
 	)
-	time.Sleep(5 * time.Second)
+	time.Sleep(4 * time.Second)
+	Expect(middleware.isOfflineOrgRestrictionsEnabledSafe()).To(BeTrue())
 	Expect(middleware.getOfflineRestrictedOrgCountSafe()).To(Equal(2))
-	Expect(middleware.isOrgRestrictedSafe(org1ExId)).To(BeTrue())
-	Expect(middleware.isOrgRestrictedSafe(org2ExId)).To(BeTrue()) // Now included
+	Expect(middleware.isOrgRestrictedSafe(org1.ExternalID())).To(BeTrue())
+	Expect(middleware.isOrgRestrictedSafe(org2.ExternalID())).To(BeTrue()) // Now included
 
 	// Validate that the middleware is enforcing the org restrictions
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -310,7 +311,7 @@ func TestMiddlewareValidateOfflineAccessByOrganization(t *testing.T) {
 	handler := middleware.Handler(nextHandler)
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	recorder := httptest.NewRecorder()
-	ctx := generateBasicTokenCtx("openid offline_access", "123456")
+	ctx := generateBasicTokenCtx("openid offline_access", org1.ExternalID())
 	request = request.WithContext(ctx)
 	handler.ServeHTTP(recorder, request)
 	// Test the status came from the callback and not the middleware
@@ -323,7 +324,7 @@ func TestMiddlewareValidateOfflineAccessByOrganization(t *testing.T) {
 		Expect(r.Method).To(Equal(http.MethodGet))
 	})
 	handler = middleware.Handler(nextHandler)
-	ctx = generateBasicTokenCtx("openid", "123456")
+	ctx = generateBasicTokenCtx("openid", org1.ExternalID())
 	request = request.WithContext(ctx)
 	recorder = httptest.NewRecorder()
 	handler.ServeHTTP(recorder, request)
@@ -333,20 +334,36 @@ func TestMiddlewareValidateOfflineAccessByOrganization(t *testing.T) {
 	ctx = generateBasicTokenCtx("openid offline_access", "123458")
 	err = middleware.ValidateOfflineAccessByOrg(ctx)
 	Expect(err).NotTo(HaveOccurred())
+
+	// Turn off the feature toggle
+	apiServer.AppendHandlers(
+		RespondWithJSON(http.StatusOK, labelResponse),
+		RespondWithJSON(http.StatusOK, orgResponse),
+		RespondWithJSON(http.StatusOK, generateFeatureResponseJSON(FlagEnforceOfflineTokenRestrictions, false)),
+	)
+	time.Sleep(4 * time.Second)
+	Expect(middleware.getOfflineRestrictedOrgCountSafe()).To(Equal(2))     // Still have two orgs restricted
+	Expect(middleware.isOfflineOrgRestrictionsEnabledSafe()).To(BeFalse()) // But the feature toggle is disabled
+
+	// Validate a restricted org can now use an offline token
+	ctx = generateBasicTokenCtx("openid", org1.ExternalID())
+	request = request.WithContext(ctx)
+	handler.ServeHTTP(recorder, request)
+	Expect(recorder.Code).To(Equal(http.StatusOK))
+
 }
 
-func TestMiddlewareValidateOfflineAccessByOrganizationFailOpen(t *testing.T) {
+func TestMiddlewareValidateOfflineAccessByOrganizationCapabilityFailOpen(t *testing.T) {
 	RegisterTestingT(t)
 
 	// Mocking AMS responses
+	// Capability check fail, feature toggle success
 	apiServer := MakeTCPServer()
 	apiServer.AppendHandlers(
-		RespondWithJSON(http.StatusUnauthorized, `error`),
-		RespondWithJSON(http.StatusUnauthorized, `error`),
-		RespondWithJSON(http.StatusUnauthorized, `error`),
-		RespondWithJSON(http.StatusUnauthorized, `error`),
-		RespondWithJSON(http.StatusUnauthorized, `error`),
-		RespondWithJSON(http.StatusUnauthorized, `error`),
+		RespondWithJSON(http.StatusUnauthorized, `error`), // Capability check
+		RespondWithJSON(http.StatusUnauthorized, `error`), // Capability check (retry 1)
+		RespondWithJSON(http.StatusUnauthorized, `error`), // Capability check (retry 2)
+		RespondWithJSON(http.StatusOK, generateFeatureResponseJSON(FlagEnforceOfflineTokenRestrictions, false)),
 	)
 
 	// Mocking SSO responses
@@ -364,9 +381,8 @@ func TestMiddlewareValidateOfflineAccessByOrganizationFailOpen(t *testing.T) {
 	Expect(err).To(BeNil())
 
 	middleware := TokenScopeValidationMiddleware{
-		Connection:                    suite.Connection(),
-		EnforceOfflineOrgRestrictions: true,
-		PollingIntervalOverride:       3 * time.Second,
+		Connection:              suite.Connection(),
+		PollingIntervalOverride: 3 * time.Second,
 	}
 
 	// Invalid responses from AMS
@@ -403,22 +419,24 @@ func TestMiddlewareValidateOfflineAccessByOrganizationFailOpen(t *testing.T) {
 	Expect(nextHandlerCalled).To(BeTrue())
 }
 
-// Tests that if the middleware is applied on an endpoint using cloud.openshift.com pull secret authentication
-// that we do not fail when `ErrorOnMissingToken` is false
-func TestMiddlewareGracefulHandlingAccessTokenPullSecret(t *testing.T) {
+func TestMiddlewareValidateOfflineAccessByOrganizationToggleFailOpen(t *testing.T) {
 	RegisterTestingT(t)
 
 	// Setup orgs
-	org1, err := v1.NewOrganization().ID("1a2b3c4d5e6f").ExternalID("123456").Build()
+	restrictedOrg, err := v1.NewOrganization().ID("1a2b3c4d5e6f").ExternalID("123456").Build()
 	Expect(err).NotTo(HaveOccurred())
 
-	organizations := []v1.Organization{*org1}
+	organizations := []v1.Organization{*restrictedOrg}
 
 	// Mocking AMS responses
+	// Capability check success, feature toggle fail
 	apiServer := MakeTCPServer()
 	apiServer.AppendHandlers(
 		RespondWithJSON(http.StatusOK, generateBasicLabelResponseJSON(organizations)),
 		RespondWithJSON(http.StatusOK, generateBasicOrganizationResponseJSON(organizations)),
+		RespondWithJSON(http.StatusUnauthorized, `error`), // Feature flag check
+		RespondWithJSON(http.StatusUnauthorized, `error`), // Feature flag check (retry 1)
+		RespondWithJSON(http.StatusUnauthorized, `error`), // Feature flag check (retry 2)
 	)
 
 	// Mocking SSO responses
@@ -436,10 +454,81 @@ func TestMiddlewareGracefulHandlingAccessTokenPullSecret(t *testing.T) {
 	Expect(err).To(BeNil())
 
 	middleware := TokenScopeValidationMiddleware{
-		Connection:                    suite.Connection(),
-		EnforceOfflineOrgRestrictions: true,
-		PollingIntervalOverride:       3 * time.Second,
-		CallbackFn:                    callback,
+		Connection:              suite.Connection(),
+		PollingIntervalOverride: 3 * time.Second,
+	}
+
+	// Invalid responses from AMS
+	stopPolling := middleware.StartPollingAMSForRestrictedOrgs()
+	defer stopPolling()
+	Expect(middleware.getOfflineRestrictedOrgCountSafe()).To(Equal(1))
+
+	nextHandlerCalled := false
+	// Validate that the middleware is NOT enforcing the org restrictions
+	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextHandlerCalled = true
+		Expect(r.Method).To(Equal(http.MethodGet))
+	})
+
+	// Validate with the offline_access scope
+	handler := middleware.Handler(nextHandler)
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	recorder := httptest.NewRecorder()
+	ctx := generateBasicTokenCtx("openid offline_access", restrictedOrg.ExternalID())
+	request = request.WithContext(ctx)
+	handler.ServeHTTP(recorder, request)
+	Expect(recorder.Code).To(Equal(http.StatusOK))
+	Expect(nextHandlerCalled).To(BeTrue())
+	nextHandlerCalled = false
+
+	// Validate without the offline_access scope
+	middleware.CallbackFn = callback
+	handler = middleware.Handler(nextHandler)
+	ctx = generateBasicTokenCtx("openid", restrictedOrg.ExternalID())
+	request = request.WithContext(ctx)
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	Expect(recorder.Code).To(Equal(http.StatusOK))
+	Expect(nextHandlerCalled).To(BeTrue())
+}
+
+// Tests that if the middleware is applied on an endpoint using cloud.openshift.com pull secret authentication
+// that we do not fail when `ErrorOnMissingToken` is false
+func TestMiddlewareGracefulHandlingAccessTokenPullSecret(t *testing.T) {
+	RegisterTestingT(t)
+
+	// Setup orgs
+	org1, err := v1.NewOrganization().ID("1a2b3c4d5e6f").ExternalID("123456").Build()
+	Expect(err).NotTo(HaveOccurred())
+
+	organizations := []v1.Organization{*org1}
+
+	// Mocking AMS responses
+	apiServer := MakeTCPServer()
+	apiServer.AppendHandlers(
+		RespondWithJSON(http.StatusOK, generateBasicLabelResponseJSON(organizations)),
+		RespondWithJSON(http.StatusOK, generateBasicOrganizationResponseJSON(organizations)),
+		RespondWithJSON(http.StatusOK, generateFeatureResponseJSON(FlagEnforceOfflineTokenRestrictions, true)),
+	)
+
+	// Mocking SSO responses
+	saToken, err := authentication.TokenFromContext(generateBasicTokenCtx("openid", "111111")) // service account mock
+	Expect(err).NotTo(HaveOccurred())
+	signedSaToken, _ := saToken.SignedString([]byte("secret"))
+	ssoServer := MakeTCPServer()
+	ssoServer.AppendHandlers(
+		RespondWithJSON(http.StatusOK, fmt.Sprintf(`{"access_token": "%s"}`, signedSaToken)),
+	)
+
+	testSuiteSpec := test.NewMockTestSuiteSpec(apiServer.URL(), ssoServer.URL())
+	suite, err := test.BuildTestSuite(testSuiteSpec)
+	Expect(suite).NotTo(BeNil())
+	Expect(err).To(BeNil())
+
+	middleware := TokenScopeValidationMiddleware{
+		Connection:              suite.Connection(),
+		PollingIntervalOverride: 3 * time.Second,
+		CallbackFn:              callback,
 	}
 
 	stopPolling := middleware.StartPollingAMSForRestrictedOrgs()
@@ -509,6 +598,13 @@ func generateBasicOrganizationResponseJSON(orgs []v1.Organization) string {
 	return `{
         "items": [` + strings.Join(items, ",") + `]
     }`
+}
+
+func generateFeatureResponseJSON(flag string, value bool) string {
+	return `{
+		"enabled": ` + fmt.Sprintf("%t", value) + `,
+		"feature_id": "` + flag + `"
+	}`
 }
 
 func callback(w http.ResponseWriter, r *http.Request, err error) {
