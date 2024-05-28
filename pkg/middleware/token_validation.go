@@ -20,7 +20,6 @@ import (
 	"github.com/pkg/errors"
 
 	logger "gitlab.cee.redhat.com/service/ocm-common/pkg/ocmlogger"
-	util "gitlab.cee.redhat.com/service/ocm-common/utils"
 )
 
 const (
@@ -268,9 +267,7 @@ func (t *TokenScopeValidationMiddleware) StartPollingAMSForRestrictedOrgs() cont
 		return cancel
 	}
 
-	successfulOrgInit, _ := withRetry(context.Background(), func() (bool, error) {
-		return t.populateOfflineRestrictedOrgs()
-	})
+	successfulOrgInit, _ := t.populateOfflineRestrictedOrgs()
 
 	if successfulOrgInit {
 		ulog.Info("Successfully initialized offline access org restrictions, org list: %v total orgs",
@@ -283,9 +280,7 @@ func (t *TokenScopeValidationMiddleware) StartPollingAMSForRestrictedOrgs() cont
 		)
 	}
 
-	successfulFlagInit, _ := withRetry(context.Background(), func() (bool, error) {
-		return t.checkEnforceOfflineOrgRestrictions()
-	})
+	successfulFlagInit, _ := t.checkEnforceOfflineOrgRestrictions()
 
 	enforceOfflineOrgRestrictions := t.isOfflineOrgRestrictionsEnabledSafe()
 
@@ -488,20 +483,4 @@ func isServiceAccount(claims jwt.MapClaims) bool {
 		_, clientIDExists = claims[ClaimClientIdLegacy]
 	}
 	return clientIDExists
-}
-
-func withRetry(ctx context.Context, op func() (bool, error)) (bool, error) {
-	ulog := logger.NewOCMLogger(ctx)
-	retryInterval := 5 * time.Second
-	maxRetries := 2
-
-	return util.NewRetry[bool]().
-		WithContext(ctx).
-		WithConstantBackoff(retryInterval).
-		WithMaxRetries(uint64(maxRetries)).
-		OnEachError(func(err error, t time.Duration) {
-			ulog.Error("Failed to initialize offline access org restrictions, retrying in %v: %v", retryInterval, err)
-		}).
-		Do(op).
-		Exec()
 }

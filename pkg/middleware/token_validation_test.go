@@ -361,8 +361,6 @@ func TestMiddlewareValidateOfflineAccessByOrganizationCapabilityFailOpen(t *test
 	apiServer := MakeTCPServer()
 	apiServer.AppendHandlers(
 		RespondWithJSON(http.StatusUnauthorized, `error`), // Capability check
-		RespondWithJSON(http.StatusUnauthorized, `error`), // Capability check (retry 1)
-		RespondWithJSON(http.StatusUnauthorized, `error`), // Capability check (retry 2)
 		RespondWithJSON(http.StatusOK, generateFeatureResponseJSON(FlagEnforceOfflineTokenRestrictions, false)),
 	)
 
@@ -435,8 +433,6 @@ func TestMiddlewareValidateOfflineAccessByOrganizationToggleFailOpen(t *testing.
 		RespondWithJSON(http.StatusOK, generateBasicLabelResponseJSON(organizations)),
 		RespondWithJSON(http.StatusOK, generateBasicOrganizationResponseJSON(organizations)),
 		RespondWithJSON(http.StatusUnauthorized, `error`), // Feature flag check
-		RespondWithJSON(http.StatusUnauthorized, `error`), // Feature flag check (retry 1)
-		RespondWithJSON(http.StatusUnauthorized, `error`), // Feature flag check (retry 2)
 	)
 
 	// Mocking SSO responses
