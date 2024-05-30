@@ -320,10 +320,10 @@ func (t *TokenScopeValidationMiddleware) StartPollingAMSForRestrictedOrgs() cont
 				ulog.Info("Checking feature flag for offline token enforcement...")
 				if _, err := t.checkEnforceOfflineOrgRestrictions(); err != nil {
 					ulog.Error("Failed to check feature flag for offline token enforcement: %v", err)
-					ulog.Info("Continuing to use existing flag value of %v", t.getOfflineRestrictedOrgCountSafe())
+					ulog.Info("Continuing to use existing flag value of %t", t.isOfflineOrgRestrictionsEnabledSafe())
 				} else {
-					ulog.Info("Successfully checked feature flag for offline token enforcement, flag value: %v",
-						t.getOfflineRestrictedOrgCountSafe())
+					ulog.Info("Successfully populated feature flag for offline token enforcement, flag value: %t",
+						t.isOfflineOrgRestrictionsEnabledSafe())
 				}
 			case <-ctx.Done():
 				ticker.Stop()
@@ -354,6 +354,8 @@ func (t *TokenScopeValidationMiddleware) checkEnforceOfflineOrgRestrictions() (b
 // Populates t.offlineRestrictedOrgs map with the result from AMS labels and organizations API
 // Returns true if the operation was successful, false otherwise
 func (t *TokenScopeValidationMiddleware) populateOfflineRestrictedOrgs() (bool, error) {
+	offlineRestrictedOrgs := make(map[string]bool)
+
 	if t.Connection == nil {
 		// Do not retry if we are missing the SDK connection
 		return true, nil
@@ -369,7 +371,8 @@ func (t *TokenScopeValidationMiddleware) populateOfflineRestrictedOrgs() (bool, 
 
 	if labelResponse == nil || labelResponse.Items() == nil ||
 		len(labelResponse.Items().Slice()) == 0 {
-		// No offline restricted orgs found
+		// No offline restricted orgs found, set the map to empty and return
+		t.setOfflineRestrictedOrgsSafe(offlineRestrictedOrgs)
 		return true, nil
 	}
 
@@ -388,9 +391,10 @@ func (t *TokenScopeValidationMiddleware) populateOfflineRestrictedOrgs() (bool, 
 	orgResponse, err := api.Organizations().List().
 		Search(fmt.Sprintf("id in (%s)", strings.Join(quotedOrganizations, ", "))).Send()
 	if err != nil {
+		// We have organizations to restrict, but failed to fetch them
+		// Do not reset the map, we will retry on the next polling interval
 		return false, err
 	}
-	offlineRestrictedOrgs := make(map[string]bool)
 	orgResponse.Items().Each(func(item *v1.Organization) bool {
 		externalId := item.ExternalID()
 		offlineRestrictedOrgs[externalId] = true
