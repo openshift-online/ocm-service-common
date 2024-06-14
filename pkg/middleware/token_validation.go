@@ -17,9 +17,8 @@ import (
 	v1 "github.com/openshift-online/ocm-sdk-go/accountsmgmt/v1"
 	"github.com/openshift-online/ocm-sdk-go/authentication"
 	authv1 "github.com/openshift-online/ocm-sdk-go/authorizations/v1"
+	"github.com/openshift-online/ocm-sdk-go/logging"
 	"github.com/pkg/errors"
-
-	logger "gitlab.cee.redhat.com/service/ocm-common/pkg/ocmlogger"
 )
 
 const (
@@ -43,15 +42,17 @@ var (
 	ErrMissingSDKConnection  = fmt.Errorf("OCM SDK connection is missing")
 )
 
-type TokenScopeValidationMiddlewareImpl interface {
+type TokenScopeValidationMiddleware interface {
 	Handler(next http.Handler) http.Handler
 	ValidateAll(ctx context.Context) error
 	ValidateScopes(ctx context.Context) error
 	ValidateOfflineAccessByOrg(ctx context.Context) error
+
 	StartPollingAMSForRestrictedOrgs() context.CancelFunc
+	Start(ctx context.Context, ulog logging.Logger)
 }
 
-// TokenScopeValidationMiddleware provides a middleware that enables validation on the JWT token of an incoming request
+// TokenScopeValidationMiddlewareImpl provides a middleware that enables validation on the JWT token of an incoming request
 // based on the configuration provided.
 //
 // Types of validation provided:
@@ -72,7 +73,7 @@ type TokenScopeValidationMiddlewareImpl interface {
 //     The middleware will always call this function if provided.
 //   - EnforceServiceAccountScopes: If true, the middleware will enforce the required and deny scopes on service accounts.
 //   - PollingIntervalOverride: Optional override for the default 15 minute polling interval for offline org restrictions.
-type TokenScopeValidationMiddleware struct {
+type TokenScopeValidationMiddlewareImpl struct {
 	mu                            sync.Mutex // safe "concurrent" map access
 	offlineRestrictedOrgs         map[string]bool
 	enforceOfflineOrgRestrictions bool // Enabled via feature flag
@@ -84,13 +85,14 @@ type TokenScopeValidationMiddleware struct {
 	CallbackFn                    func(http.ResponseWriter, *http.Request, error)
 	EnforceServiceAccountScopes   bool
 	PollingIntervalOverride       time.Duration
+	Logger                        logging.Logger
 }
 
-var _ TokenScopeValidationMiddlewareImpl = &TokenScopeValidationMiddleware{}
+var _ TokenScopeValidationMiddleware = &TokenScopeValidationMiddlewareImpl{}
 
 // Runs ValidateAll and calls the next handler.
 // Leverages the optional callbackFn for custom logging or error handling.
-func (t *TokenScopeValidationMiddleware) Handler(next http.Handler) http.Handler {
+func (t *TokenScopeValidationMiddlewareImpl) Handler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		err := t.ValidateAll(r.Context())
 		if t.CallbackFn != nil {
@@ -106,7 +108,7 @@ func (t *TokenScopeValidationMiddleware) Handler(next http.Handler) http.Handler
 }
 
 // Validates the token context given the middleware configuration
-func (t *TokenScopeValidationMiddleware) ValidateAll(ctx context.Context) error {
+func (t *TokenScopeValidationMiddlewareImpl) ValidateAll(ctx context.Context) error {
 	if t.DisableAllValidation {
 		return nil
 	}
@@ -124,7 +126,7 @@ func (t *TokenScopeValidationMiddleware) ValidateAll(ctx context.Context) error 
 
 // Validates if the token scopes conform to the resource servers requirements.
 // If denyScopes and requiredScopes are empty then no validation is performed.
-func (t *TokenScopeValidationMiddleware) ValidateScopes(ctx context.Context) error {
+func (t *TokenScopeValidationMiddlewareImpl) ValidateScopes(ctx context.Context) error {
 	if t.DisableAllValidation {
 		return nil
 	}
@@ -196,7 +198,7 @@ func (t *TokenScopeValidationMiddleware) ValidateScopes(ctx context.Context) err
 
 // Validates offline access for the organization in the token context
 // Requires the OCM SDK connection to be set and StartPollingAMSForRestrictedOrgs to be called.
-func (t *TokenScopeValidationMiddleware) ValidateOfflineAccessByOrg(ctx context.Context) error {
+func (t *TokenScopeValidationMiddlewareImpl) ValidateOfflineAccessByOrg(ctx context.Context) error {
 	if t.DisableAllValidation || !t.isOfflineOrgRestrictionsEnabledSafe() {
 		return nil
 	}
@@ -258,75 +260,30 @@ func (t *TokenScopeValidationMiddleware) ValidateOfflineAccessByOrg(ctx context.
 // Immediately populates the offline restricted orgs & feature flag, then starts a polling
 // function to repeat the operation. This should be called once at the start
 // of the application, before the server starts accepting requests.
-func (t *TokenScopeValidationMiddleware) StartPollingAMSForRestrictedOrgs() context.CancelFunc {
-	ulog := logger.NewOCMLogger(context.Background())
+// For services that will let ocm-common manage the routine
+func (t *TokenScopeValidationMiddlewareImpl) StartPollingAMSForRestrictedOrgs() context.CancelFunc {
+	ulog := t.Logger
+	if ulog == nil {
+		ulog, _ = sdk.NewGoLoggerBuilder().
+			Info(true).
+			Build()
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 
 	if t.Connection == nil {
-		ulog.Debug("OCM SDK connection is missing, offline token restrictions will not be enforced")
+		ulog.Debug(ctx, "OCM SDK connection is missing, offline token restrictions will not be enforced")
 		return cancel
 	}
+	t.preSteps(ctx, ulog)
 
-	successfulOrgInit, _ := t.populateOfflineRestrictedOrgs()
-
-	if successfulOrgInit {
-		ulog.Info("Successfully initialized offline access org restrictions, org list: %v total orgs",
-			t.getOfflineRestrictedOrgCountSafe())
-	} else {
-		// Log and continue, the goroutine will attempt to self-heal.
-		// API requests will fail open and offline access will be allowed.
-		ulog.Error(
-			"Failed to initialize offline access restricted orgs, restrictions will not be applied until self-healing occurs",
-		)
-	}
-
-	successfulFlagInit, _ := t.checkEnforceOfflineOrgRestrictions()
-
-	enforceOfflineOrgRestrictions := t.isOfflineOrgRestrictionsEnabledSafe()
-
-	if successfulFlagInit {
-		ulog.Info("Successfully initialized offline enforcement flag: %t", enforceOfflineOrgRestrictions)
-	} else {
-		// Log and continue, the goroutine will attempt to self-heal.
-		// API requests will fail open and offline access will be allowed.
-		ulog.Error(
-			"Failed to initialize offline enforcement flag, restrictions will not be applied until self-healing occurs",
-		)
-	}
-
-	// Schedule the polling function to run every 5 minutes or the override duration
-	duration := 5 * time.Minute
-	if t.PollingIntervalOverride > 0 {
-		duration = t.PollingIntervalOverride
-	}
-	ulog.Info("Starting AMS polling for org restrictions every %v...", duration)
-
-	ticker := time.NewTicker(duration)
+	pollTicker := t.createTicker(ctx, ulog)
 	go func() {
 		for {
 			select {
-			case <-ticker.C:
-				// Populate the orgs
-				ulog.Info("Polling AMS for org restrictions...")
-				if _, err := t.populateOfflineRestrictedOrgs(); err != nil {
-					ulog.Error("Failed AMS polling for org restrictions: %v", err)
-					ulog.Info("Continuing to use existing org list: %d total orgs", t.getOfflineRestrictedOrgCountSafe())
-				} else {
-					ulog.Info("Successfully populated offline access org restrictions, org list: %d total orgs",
-						t.getOfflineRestrictedOrgCountSafe())
-				}
-
-				// Check the feature flag
-				ulog.Info("Checking feature flag for offline token enforcement...")
-				if _, err := t.checkEnforceOfflineOrgRestrictions(); err != nil {
-					ulog.Error("Failed to check feature flag for offline token enforcement: %v", err)
-					ulog.Info("Continuing to use existing flag value of %t", t.isOfflineOrgRestrictionsEnabledSafe())
-				} else {
-					ulog.Info("Successfully populated feature flag for offline token enforcement, flag value: %t",
-						t.isOfflineOrgRestrictionsEnabledSafe())
-				}
+			case <-pollTicker.C:
+				t.check(ctx, ulog)
 			case <-ctx.Done():
-				ticker.Stop()
+				pollTicker.Stop()
 				return
 			}
 		}
@@ -335,10 +292,93 @@ func (t *TokenScopeValidationMiddleware) StartPollingAMSForRestrictedOrgs() cont
 	return cancel
 }
 
+func (t *TokenScopeValidationMiddlewareImpl) createTicker(ctx context.Context, ulog logging.Logger) *time.Ticker {
+	// Schedule the polling function to run every 5 minutes or the override duration
+	duration := 5 * time.Minute
+	if t.PollingIntervalOverride > 0 {
+		duration = t.PollingIntervalOverride
+	}
+
+	ulog.Info(ctx, "Created polling ticker for AMS org restrictions every %v...", duration)
+	return time.NewTicker(duration)
+}
+
+// For services that have a routine manager
+func (t *TokenScopeValidationMiddlewareImpl) Start(ctx context.Context, ulog logging.Logger) {
+	if t.Connection == nil {
+		ulog.Debug(ctx, "OCM SDK connection is missing, offline token restrictions will not be enforced")
+		return
+	}
+	t.preSteps(ctx, ulog)
+
+	pollTicker := t.createTicker(ctx, ulog)
+	for {
+		select {
+		case <-pollTicker.C:
+			t.check(ctx, ulog)
+		case <-ctx.Done():
+			pollTicker.Stop()
+			return
+		}
+	}
+}
+
+func (t *TokenScopeValidationMiddlewareImpl) preSteps(ctx context.Context, ulog logging.Logger) {
+	successfulOrgInit, _ := t.populateOfflineRestrictedOrgs()
+
+	if successfulOrgInit {
+		ulog.Info(ctx, "Successfully initialized offline access org restrictions, org list: %v total orgs",
+			t.getOfflineRestrictedOrgCountSafe())
+	} else {
+		// Log and continue, the goroutine will attempt to self-heal.
+		// API requests will fail open and offline access will be allowed.
+		ulog.Error(ctx,
+			"Failed to initialize offline access restricted orgs, restrictions will not be applied until self-healing occurs",
+		)
+	}
+
+	successfulFlagInit, _ := t.checkEnforceOfflineOrgRestrictions(ctx)
+
+	enforceOfflineOrgRestrictions := t.isOfflineOrgRestrictionsEnabledSafe()
+
+	if successfulFlagInit {
+		ulog.Info(ctx, "Successfully initialized offline enforcement flag: %t", enforceOfflineOrgRestrictions)
+	} else {
+		// Log and continue, the goroutine will attempt to self-heal.
+		// API requests will fail open and offline access will be allowed.
+		ulog.Error(ctx,
+			"Failed to initialize offline enforcement flag, restrictions will not be applied until self-healing occurs",
+		)
+	}
+}
+
+func (t *TokenScopeValidationMiddlewareImpl) check(
+	ctx context.Context, ulog logging.Logger) {
+	// Populate the orgs
+	ulog.Info(ctx, "Polling AMS for org restrictions...")
+	if _, err := t.populateOfflineRestrictedOrgs(); err != nil {
+		ulog.Error(ctx, "Failed AMS polling for org restrictions: %v", err)
+		ulog.Info(ctx, "Continuing to use existing org list: %d total orgs", t.getOfflineRestrictedOrgCountSafe())
+	} else {
+		ulog.Info(ctx, "Successfully populated offline access org restrictions, org list: %d total orgs",
+			t.getOfflineRestrictedOrgCountSafe())
+	}
+
+	// Check the feature flag
+	ulog.Info(ctx, "Checking feature flag for offline token enforcement...")
+	if _, err := t.checkEnforceOfflineOrgRestrictions(ctx); err != nil {
+		ulog.Error(ctx, "Failed to check feature flag for offline token enforcement: %v", err)
+		ulog.Info(ctx, "Continuing to use existing flag value of %t", t.isOfflineOrgRestrictionsEnabledSafe())
+	} else {
+		ulog.Info(ctx, "Successfully populated feature flag for offline token enforcement, flag value: %t",
+			t.isOfflineOrgRestrictionsEnabledSafe())
+	}
+}
+
 // Checks the feature flag to enable offline org restrictions
 // Returns true if the operation was successful, false otherwise
-func (t *TokenScopeValidationMiddleware) checkEnforceOfflineOrgRestrictions() (bool, error) {
-	isFlagEnabled, err := t.isFeatureEnabled(context.Background(), FlagEnforceOfflineTokenRestrictions)
+func (t *TokenScopeValidationMiddlewareImpl) checkEnforceOfflineOrgRestrictions(ctx context.Context) (bool, error) {
+	isFlagEnabled, err := t.isFeatureEnabled(ctx, FlagEnforceOfflineTokenRestrictions)
 	if errors.Is(err, ErrMissingSDKConnection) {
 		// Do not retry if we are missing the SDK connection
 		return true, nil
@@ -353,7 +393,7 @@ func (t *TokenScopeValidationMiddleware) checkEnforceOfflineOrgRestrictions() (b
 
 // Populates t.offlineRestrictedOrgs map with the result from AMS labels and organizations API
 // Returns true if the operation was successful, false otherwise
-func (t *TokenScopeValidationMiddleware) populateOfflineRestrictedOrgs() (bool, error) {
+func (t *TokenScopeValidationMiddlewareImpl) populateOfflineRestrictedOrgs() (bool, error) {
 	offlineRestrictedOrgs := make(map[string]bool)
 
 	if t.Connection == nil {
@@ -406,37 +446,37 @@ func (t *TokenScopeValidationMiddleware) populateOfflineRestrictedOrgs() (bool, 
 	return true, err
 }
 
-func (t *TokenScopeValidationMiddleware) getOfflineRestrictedOrgCountSafe() int {
+func (t *TokenScopeValidationMiddlewareImpl) getOfflineRestrictedOrgCountSafe() int {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return len(t.offlineRestrictedOrgs)
 }
 
-func (t *TokenScopeValidationMiddleware) isOrgRestrictedSafe(orgID string) bool {
+func (t *TokenScopeValidationMiddlewareImpl) isOrgRestrictedSafe(orgID string) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.offlineRestrictedOrgs[orgID]
 }
 
-func (t *TokenScopeValidationMiddleware) setOfflineRestrictedOrgsSafe(offlineRestrictedOrgs map[string]bool) {
+func (t *TokenScopeValidationMiddlewareImpl) setOfflineRestrictedOrgsSafe(offlineRestrictedOrgs map[string]bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.offlineRestrictedOrgs = offlineRestrictedOrgs
 }
 
-func (t *TokenScopeValidationMiddleware) isOfflineOrgRestrictionsEnabledSafe() bool {
+func (t *TokenScopeValidationMiddlewareImpl) isOfflineOrgRestrictionsEnabledSafe() bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.enforceOfflineOrgRestrictions
 }
 
-func (t *TokenScopeValidationMiddleware) setEnforceOfflineOrgRestrictionsSafe(enforceOfflineOrgRestrictions bool) {
+func (t *TokenScopeValidationMiddlewareImpl) setEnforceOfflineOrgRestrictionsSafe(enforceOfflineOrgRestrictions bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.enforceOfflineOrgRestrictions = enforceOfflineOrgRestrictions
 }
 
-func (t *TokenScopeValidationMiddleware) isFeatureEnabled(ctx context.Context, featureName string) (bool, error) {
+func (t *TokenScopeValidationMiddlewareImpl) isFeatureEnabled(ctx context.Context, featureName string) (bool, error) {
 	if t.Connection == nil {
 		return false, ErrMissingSDKConnection
 	}

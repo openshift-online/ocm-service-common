@@ -59,7 +59,7 @@ type TestConfig struct {
 func BuildTestSuite(spec *TestSuiteSpec) (*TestSuite, error) {
 	conn, err := spec.SdkConnector.Connect(spec)
 	if err != nil {
-		return nil, errors.Errorf("Unable to run test framework, connection to SDK must be provided")
+		return nil, errors.Errorf("Unable to run test framework, connection to SDK must be provided: %v", err)
 	}
 
 	// Default timeout to five minutes.

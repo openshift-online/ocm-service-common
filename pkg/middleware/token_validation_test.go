@@ -15,6 +15,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/golang-jwt/jwt/v4"
+	sdk "github.com/openshift-online/ocm-sdk-go"
 	v1 "github.com/openshift-online/ocm-sdk-go/accountsmgmt/v1"
 	"github.com/openshift-online/ocm-sdk-go/authentication"
 	. "github.com/openshift-online/ocm-sdk-go/testing"
@@ -25,7 +26,7 @@ func TestValidRequiredScopes(t *testing.T) {
 
 	ctx := generateBasicTokenCtx("openid api.ocm", "123456")
 
-	middleware := TokenScopeValidationMiddleware{
+	middleware := TokenScopeValidationMiddlewareImpl{
 		RequiredScopes: []string{"api.ocm"},
 	}
 
@@ -38,7 +39,7 @@ func TestInvalidRequiredScopes(t *testing.T) {
 
 	ctx := generateBasicTokenCtx("openid", "123456")
 
-	middleware := TokenScopeValidationMiddleware{
+	middleware := TokenScopeValidationMiddlewareImpl{
 		RequiredScopes: []string{"api.ocm"},
 	}
 
@@ -53,7 +54,7 @@ func TestValidDenyScopes(t *testing.T) {
 
 	ctx := generateBasicTokenCtx("openid api.ocm", "123456")
 
-	middleware := TokenScopeValidationMiddleware{
+	middleware := TokenScopeValidationMiddlewareImpl{
 		DenyScopes: []string{"offline_access"},
 	}
 
@@ -67,7 +68,7 @@ func TestInvalidDenyScopes(t *testing.T) {
 
 	ctx := generateBasicTokenCtx("openid api.ocm offline_access", "123456")
 
-	middleware := TokenScopeValidationMiddleware{
+	middleware := TokenScopeValidationMiddlewareImpl{
 		DenyScopes: []string{"offline_access"},
 	}
 
@@ -81,7 +82,7 @@ func TestServiceAccountNoScopeValidation(t *testing.T) {
 
 	ctx := generateServiceAcctTokenCtx("client_id", "openid")
 
-	middleware := TokenScopeValidationMiddleware{
+	middleware := TokenScopeValidationMiddlewareImpl{
 		DenyScopes: []string{"offline_access"},
 	}
 
@@ -94,7 +95,7 @@ func TestServiceAccountWithScopeValidationPass(t *testing.T) {
 
 	ctx := generateServiceAcctTokenCtx("clientId", "openid api.ocm")
 
-	middleware := TokenScopeValidationMiddleware{
+	middleware := TokenScopeValidationMiddlewareImpl{
 		DenyScopes:                  []string{"offline_access"},
 		EnforceServiceAccountScopes: true,
 	}
@@ -108,7 +109,7 @@ func TestServiceAccountWithScopeValidationFail(t *testing.T) {
 
 	ctx := generateServiceAcctTokenCtx("client_id", "openid")
 
-	middleware := TokenScopeValidationMiddleware{
+	middleware := TokenScopeValidationMiddlewareImpl{
 		RequiredScopes:              []string{"api.ocm"},
 		EnforceServiceAccountScopes: true,
 	}
@@ -123,7 +124,7 @@ func TestValidateAll(t *testing.T) {
 
 	ctx := generateBasicTokenCtx("openid api.ocm", "123456")
 
-	middleware := TokenScopeValidationMiddleware{
+	middleware := TokenScopeValidationMiddlewareImpl{
 		DenyScopes:     []string{"offline_access"},
 		RequiredScopes: []string{"api.ocm"},
 	}
@@ -139,7 +140,7 @@ func TestMiddlewareValidate(t *testing.T) {
 		Expect(r.Method).To(Equal(http.MethodGet))
 	})
 
-	middleware := TokenScopeValidationMiddleware{
+	middleware := TokenScopeValidationMiddlewareImpl{
 		DenyScopes:     []string{"offline_access"},
 		RequiredScopes: []string{"api.ocm"},
 	}
@@ -160,7 +161,7 @@ func TestMiddlewareValidateAllowMissingTokens(t *testing.T) {
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		Expect(r.Method).To(Equal(http.MethodGet))
 	})
-	middleware := TokenScopeValidationMiddleware{
+	middleware := TokenScopeValidationMiddlewareImpl{
 		DenyScopes:     []string{"offline_access"},
 		RequiredScopes: []string{"api.ocm"},
 	}
@@ -179,7 +180,7 @@ func TestMiddlewareValidateErrorOnMissingTokens(t *testing.T) {
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fail() // Should not be called
 	})
-	middleware := TokenScopeValidationMiddleware{
+	middleware := TokenScopeValidationMiddlewareImpl{
 		ErrorOnMissingToken: true,
 		DenyScopes:          []string{"offline_access"},
 		RequiredScopes:      []string{"api.ocm"},
@@ -199,7 +200,7 @@ func TestMiddlewareValidateWithCallbackPassthrough(t *testing.T) {
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		Expect(r.Method).To(Equal(http.MethodGet))
 	})
-	middleware := TokenScopeValidationMiddleware{
+	middleware := TokenScopeValidationMiddlewareImpl{
 		DenyScopes:     []string{"offline_access"},
 		RequiredScopes: []string{"api.ocm"},
 		CallbackFn:     callback,
@@ -221,7 +222,7 @@ func TestMiddlewareValidateWithCallbackError(t *testing.T) {
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		Expect(r.Method).To(Equal(http.MethodGet))
 	})
-	middleware := TokenScopeValidationMiddleware{
+	middleware := TokenScopeValidationMiddlewareImpl{
 		DenyScopes:     []string{"offline_access"},
 		RequiredScopes: []string{"api.ocm"},
 		CallbackFn:     callbackExpectError,
@@ -273,15 +274,137 @@ func TestMiddlewareValidateOfflineAccessByOrganization(t *testing.T) {
 	Expect(suite).NotTo(BeNil())
 	Expect(err).To(BeNil())
 
-	middleware := TokenScopeValidationMiddleware{
+	middleware := TokenScopeValidationMiddlewareImpl{
+		Connection:              suite.Connection(),
+		PollingIntervalOverride: 3 * time.Second,
+		CallbackFn:              callbackExpectError,
+	}
+
+	stopPolling := middleware.StartPollingAMSForRestrictedOrgs()
+	defer stopPolling()
+	Expect(middleware.isOfflineOrgRestrictionsEnabledSafe()).To(BeTrue())
+	Expect(middleware.offlineRestrictedOrgs).To(HaveLen(1))
+	Expect(middleware.isOrgRestrictedSafe(org1.ExternalID())).To(BeTrue())
+	Expect(middleware.isOrgRestrictedSafe(org2.ExternalID())).To(BeFalse()) // Not included yet
+
+	// Add org2 to the list of organizations
+	organizations = append(organizations, *org2)
+	labelResponse := generateBasicLabelResponseJSON(organizations)
+	orgResponse := generateBasicOrganizationResponseJSON(organizations)
+	apiServer.AppendHandlers(
+		RespondWithJSON(http.StatusOK, labelResponse),
+		RespondWithJSON(http.StatusOK, orgResponse),
+		RespondWithJSON(http.StatusOK, generateFeatureResponseJSON(FlagEnforceOfflineTokenRestrictions, true)),
+	)
+	time.Sleep(4 * time.Second)
+	Expect(middleware.isOfflineOrgRestrictionsEnabledSafe()).To(BeTrue())
+	Expect(middleware.getOfflineRestrictedOrgCountSafe()).To(Equal(2))
+	Expect(middleware.isOrgRestrictedSafe(org1.ExternalID())).To(BeTrue())
+	Expect(middleware.isOrgRestrictedSafe(org2.ExternalID())).To(BeTrue()) // Now included
+
+	// Validate that the middleware is enforcing the org restrictions
+	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fail() // Should not be called
+	})
+
+	// Validate with the offline_access scope
+	handler := middleware.Handler(nextHandler)
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	recorder := httptest.NewRecorder()
+	ctx := generateBasicTokenCtx("openid offline_access", org1.ExternalID())
+	request = request.WithContext(ctx)
+	handler.ServeHTTP(recorder, request)
+	// Test the status came from the callback and not the middleware
+	Expect(recorder.Code).To(Equal(http.StatusForbidden))
+	Expect(recorder.Body.String()).To(ContainSubstring("offline access is restricted for organization"))
+
+	// Validate without the offline_access scope
+	middleware.CallbackFn = callback
+	nextHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		Expect(r.Method).To(Equal(http.MethodGet))
+	})
+	handler = middleware.Handler(nextHandler)
+	ctx = generateBasicTokenCtx("openid", org1.ExternalID())
+	request = request.WithContext(ctx)
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	Expect(recorder.Code).To(Equal(http.StatusOK))
+
+	// Validate offline access works for a non-restricted org
+	ctx = generateBasicTokenCtx("openid offline_access", "123458")
+	err = middleware.ValidateOfflineAccessByOrg(ctx)
+	Expect(err).NotTo(HaveOccurred())
+
+	// Turn off the feature toggle
+	apiServer.AppendHandlers(
+		RespondWithJSON(http.StatusOK, labelResponse),
+		RespondWithJSON(http.StatusOK, orgResponse),
+		RespondWithJSON(http.StatusOK, generateFeatureResponseJSON(FlagEnforceOfflineTokenRestrictions, false)),
+	)
+	time.Sleep(4 * time.Second)
+	Expect(middleware.getOfflineRestrictedOrgCountSafe()).To(Equal(2))     // Still have two orgs restricted
+	Expect(middleware.isOfflineOrgRestrictionsEnabledSafe()).To(BeFalse()) // But the feature toggle is disabled
+
+	// Validate a restricted org can now use an offline token
+	ctx = generateBasicTokenCtx("openid", org1.ExternalID())
+	request = request.WithContext(ctx)
+	handler.ServeHTTP(recorder, request)
+	Expect(recorder.Code).To(Equal(http.StatusOK))
+
+}
+
+func TestMiddlewareValidateOfflineAccessByOrganizatioStart(t *testing.T) {
+	RegisterTestingT(t)
+
+	// Setup orgs
+	org1, err := v1.NewOrganization().ID("1a2b3c4d5e6f").ExternalID("123456").Build()
+	Expect(err).NotTo(HaveOccurred())
+	org2, err := v1.NewOrganization().ID("7g8h9i0j1k2l").ExternalID("123457").Build()
+	Expect(err).NotTo(HaveOccurred())
+
+	organizations := []v1.Organization{*org1}
+
+	// Mocking AMS responses
+	apiServer := MakeTCPServer()
+	apiServer.AppendHandlers(
+		RespondWithJSON(http.StatusOK, generateBasicLabelResponseJSON(organizations)),
+		RespondWithJSON(http.StatusOK, generateBasicOrganizationResponseJSON(organizations)),
+		RespondWithJSON(http.StatusOK, generateFeatureResponseJSON(FlagEnforceOfflineTokenRestrictions, true)),
+	)
+
+	saToken, err := authentication.TokenFromContext(generateBasicTokenCtx("openid", "111111")) // service account mock
+	Expect(err).NotTo(HaveOccurred())
+
+	signedSaToken, _ := saToken.SignedString([]byte("secret"))
+
+	// Mocking SSO responses
+	ssoServer := MakeTCPServer()
+	ssoServer.AppendHandlers(
+		RespondWithJSON(http.StatusOK, fmt.Sprintf(`{"access_token": "%s"}`, signedSaToken)),
+	)
+
+	testSuiteSpec := test.NewMockTestSuiteSpec(apiServer.URL(), ssoServer.URL())
+	suite, err := test.BuildTestSuite(testSuiteSpec)
+	Expect(suite).NotTo(BeNil())
+	Expect(err).To(BeNil())
+
+	middleware := TokenScopeValidationMiddlewareImpl{
 		Connection:              suite.Connection(),
 		PollingIntervalOverride: 3 * time.Second,
 		CallbackFn:              callbackExpectError,
 	}
 
 	// Valid Base URL & Organizations
-	stopPolling := middleware.StartPollingAMSForRestrictedOrgs()
-	defer stopPolling()
+	ulog, _ := sdk.NewGoLoggerBuilder().
+		Info(true).
+		Build()
+	startCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		middleware.Start(startCtx, ulog)
+	}()
+	// Just enough time for routine overhead
+	time.Sleep(200 * time.Millisecond)
 	Expect(middleware.isOfflineOrgRestrictionsEnabledSafe()).To(BeTrue())
 	Expect(middleware.offlineRestrictedOrgs).To(HaveLen(1))
 	Expect(middleware.isOrgRestrictedSafe(org1.ExternalID())).To(BeTrue())
@@ -378,7 +501,7 @@ func TestMiddlewareValidateOfflineAccessByOrganizationCapabilityFailOpen(t *test
 	Expect(suite).NotTo(BeNil())
 	Expect(err).To(BeNil())
 
-	middleware := TokenScopeValidationMiddleware{
+	middleware := TokenScopeValidationMiddlewareImpl{
 		Connection:              suite.Connection(),
 		PollingIntervalOverride: 3 * time.Second,
 	}
@@ -449,7 +572,7 @@ func TestMiddlewareValidateOfflineAccessByOrganizationToggleFailOpen(t *testing.
 	Expect(suite).NotTo(BeNil())
 	Expect(err).To(BeNil())
 
-	middleware := TokenScopeValidationMiddleware{
+	middleware := TokenScopeValidationMiddlewareImpl{
 		Connection:              suite.Connection(),
 		PollingIntervalOverride: 3 * time.Second,
 	}
@@ -521,7 +644,7 @@ func TestMiddlewareGracefulHandlingAccessTokenPullSecret(t *testing.T) {
 	Expect(suite).NotTo(BeNil())
 	Expect(err).To(BeNil())
 
-	middleware := TokenScopeValidationMiddleware{
+	middleware := TokenScopeValidationMiddlewareImpl{
 		Connection:              suite.Connection(),
 		PollingIntervalOverride: 3 * time.Second,
 		CallbackFn:              callback,
