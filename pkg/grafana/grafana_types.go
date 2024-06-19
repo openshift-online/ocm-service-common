@@ -167,8 +167,6 @@ type Defaults struct {
 	Unit       *string    `json:"unit,omitempty" yaml:"unit,omitempty"`
 	Overrides  *string    `json:"overrides,omitempty" yaml:"overrides,omitempty"`
 	Custom     *Custom    `json:"custom,omitempty" yaml:"custom,omitempty"`
-	Max        *int       `json:"max,omitempty" yaml:"max,omitempty"`
-	Min        *int       `json:"min,omitempty" yaml:"min,omitempty"`
 }
 
 type FieldConfig struct {
@@ -218,7 +216,6 @@ type Options struct {
 	ShowThresholdMarkers *bool           `json:"showThresholdMarkers,omitempty" yaml:"showThresholdMarkers,omitempty"`
 	LegendOptions        *LegendOptions  `json:"legend,omitempty" yaml:"legend,omitempty"`
 	TooltipOptions       *TooltipOptions `json:"tooltip,omitempty" yaml:"tooltip,omitempty"`
-	DisplayMode          *string         `json:"displayMode,omitempty" yaml:"displayMode,omitempty"`
 }
 
 type TooltipOptions struct {
