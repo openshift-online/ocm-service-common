@@ -18,6 +18,19 @@ var _ = Describe("Unknowns Test", func() {
 				"if this fails the products custom field has changed, check that the change is valid")
 		})
 	})
+	When("Unknown `ClusterId` custom field is passed", func() {
+		It("Should return the valid custom field", func() {
+			knownField := getUnknownCustomField("ClusterId")
+			Expect(knownField).To(Equal(ClusterIdField),
+				"if this fails the Cluster ID custom field has changed, check that the change is valid")
+		})
+	})
+	When("Unknown `ClusterOrg` custom field is passed", func() {
+		It("Should return the valid custom field", func() {
+			knownField := getUnknownCustomField("ClusterOrg")
+			Expect(knownField).To(Equal(ClusterOrgField),
+				"if this fails the Cluster Org custom field has changed, check that the change is valid")
+		})
+	})
+
 })
-
-
