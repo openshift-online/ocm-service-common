@@ -384,7 +384,7 @@ type Panel struct {
 	Type            string      `json:"type,omitempty" yaml:"type,omitempty"`
 	Title           string      `json:"title,omitempty" yaml:"title,omitempty"`
 	Repeat          string      `json:"repeat,omitempty" yaml:"repeat,omitempty"`
-	RepeatDirection string      `json:"repeat_direction,omitempty" yaml:"repeatrepeat_direction,omitempty"`
+	RepeatDirection string      `json:"repeatDirection,omitempty" yaml:"repeatDirection,omitempty"`
 	GridPos         GridPos     `json:"gridPos,omitempty" yaml:"gridPos,omitempty"`
 	Id              int         `json:"id,omitempty" yaml:"id,omitempty"`
 	Collapsed       bool        `json:"collapsed,omitempty" yaml:"collapsed,omitempty"`
