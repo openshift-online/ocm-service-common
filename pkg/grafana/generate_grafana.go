@@ -71,6 +71,19 @@ func GenerateGrafana(configFile string, outputFile string) {
 				*panelItem.Latency,
 			)
 			grafana.Panels = append(grafana.Panels, panel)
+		case "routes":
+			rowNum++
+			panelId++
+			exprAvailability, exprRequests,
+				exprErrors1, exprErrors2, exprError3,
+				exprDuration, exprLatency := prepareExpressions(config.Grafana.Service, false, "$route", *panelItem.Exception)
+			fldId, panel = createRoutes(*datasource, *panelItem.Path, rowNum, panelId, fldId,
+				exprAvailability,
+				exprRequests,
+				exprErrors1, exprErrors2, exprError3,
+				exprDuration, exprLatency,
+			)
+			grafana.Panels = append(grafana.Panels, panel)
 		case "openapi":
 			// Load and validate openapi
 			loader := openapi3.NewLoader()
@@ -397,6 +410,426 @@ func createRegular(datasource Datasource, title string, rowNum int, panelId int,
 				},
 				Title: toPtr("Duration"),
 				Type:  toPtr("timeseries"),
+			},
+			{
+				Datasource: &Datasource{
+					Uid: toPtr("$datasource"),
+				},
+				Description: toPtr("The percentage of time that the API responds within 1 second."),
+				FieldConfig: &FieldConfig{
+					Defaults: &Defaults{
+						Color: &Color{
+							Mode: toPtr("thresholds"),
+						},
+						Mappings: &[]Mapping{
+							{
+								Options: &MappingOptions{
+									Match: toPtr("null"),
+									Result: &Result{
+										Text: toPtr("N/A"),
+									},
+								},
+								Type: toPtr("special"),
+							},
+						},
+						Thresholds: &Threshold{
+							Mode: toPtr("absolute"),
+							Steps: &[]Step{
+								{
+									Color: toPtr("#d44a3a"),
+								},
+								{
+									Color: toPtr("rgba(237, 129, 40, 0.89)"),
+									Value: toPtr(float32(0.99)),
+								},
+								{
+									Color: toPtr("#299c46"),
+									Value: toPtr(float32(0.995)),
+								},
+							},
+						},
+						Unit: toPtr("percentunit"),
+					},
+				},
+				GridPos: GridPos{
+					H: 4,
+					W: 3,
+					X: 0,
+					Y: 5,
+				},
+				Id:            fldId + 4,
+				MaxDataPoints: toPtr(100),
+				Options: &Options{
+					ColorMode:   toPtr("value"),
+					GraphMode:   toPtr("none"),
+					JustifyMode: toPtr("auto"),
+					Orientation: toPtr("horizontal"),
+					ReduceOptions: &ReduceOptions{
+						Calcs:  &[]string{"lastNotNull"},
+						Fields: toPtr(""),
+						Values: toPtr(false),
+					},
+					TextMode: toPtr("auto"),
+				},
+				PluginVersion: toPtr("8.5.2"),
+				Targets: []Target{
+					{
+						Expr:    exprLatency,
+						Format:  toPtr("time_series"),
+						Instant: toPtr(true),
+						RefId:   "A",
+					},
+				},
+				Title: toPtr("Latency (< 1s) "),
+				Type:  toPtr("stat"),
+			},
+		},
+	}
+
+	if exprErrors3 != nil {
+		var legendFormat = "5xx and timeout - {{deployment_ring}}"
+		if strings.Contains(*exprErrors3, "4..|0") {
+			legendFormat = "4xx - {{deployment_ring}}"
+		}
+		panel.Panels[2].Targets = append(panel.Panels[2].Targets, Target{
+			Expr:         *exprErrors3,
+			LegendFormat: &legendFormat,
+			RefId:        "B",
+		})
+	}
+
+	return fldId + 5, panel
+}
+
+func createRoutes(datasource Datasource, title string, rowNum int, panelId int, fldId int,
+	exprAvailability string, exprRequests string,
+	exprErrors1 string, exprErrors2 string, exprErrors3 *string,
+	exprDuration string, exprLatency string) (int, Panel) {
+
+	panel := Panel{
+		Type:            "row",
+		Title:           "$route",
+		Repeat:          "route",
+		RepeatDirection: "h",
+		GridPos: GridPos{
+			H: 1,
+			W: 24,
+			X: 0,
+			Y: rowNum,
+		},
+		Id:        panelId,
+		Collapsed: true,
+		Datasource: Datasource{
+			Type: datasource.Type,
+			Uid:  datasource.Uid,
+		},
+		Panels: []PanelItem{
+			{
+				Datasource: &Datasource{
+					Uid: toPtr("$datasource"),
+				},
+				Description: toPtr("The percentage of time that the API is available (not returning 500 Internal Service Errors)."),
+				GridPos: GridPos{
+					H: 4,
+					W: 3,
+					X: 0,
+					Y: 1,
+				},
+				FieldConfig: &FieldConfig{
+					Defaults: &Defaults{
+						Color: &Color{
+							Mode: toPtr("thresholds"),
+						},
+						Mappings: &[]Mapping{
+							{
+								Options: &MappingOptions{
+									Match: toPtr("null"),
+									Result: &Result{
+										Text: toPtr("N/A"),
+									},
+								},
+								Type: toPtr("special"),
+							},
+						},
+						Thresholds: &Threshold{
+							Mode: toPtr("absolute"),
+							Steps: &[]Step{
+								{
+									Color: toPtr("#d44a3a"),
+									Value: toPtr(float32(0)),
+								},
+								{
+									Color: toPtr("rgba(237, 129, 40, 0.89)"),
+									Value: toPtr(float32(0.99)),
+								},
+								{
+									Color: toPtr("#299c46"),
+									Value: toPtr(float32(0.995)),
+								},
+							},
+						},
+						Unit:      toPtr("percentunit"),
+						Overrides: nil,
+					},
+					Overrides: &[]string{},
+				},
+				Id:            fldId,
+				MaxDataPoints: toPtr(100),
+				Options: &Options{
+					ColorMode:   toPtr("value"),
+					GraphMode:   toPtr("none"),
+					JustifyMode: toPtr("auto"),
+					Orientation: toPtr("horizontal"),
+					ReduceOptions: &ReduceOptions{
+						Calcs: &[]string{"lastNotNull"},
+					},
+					TextMode: toPtr("auto"),
+				},
+				PluginVersion: toPtr("8.5.2"),
+				Targets: []Target{
+					{
+						Expr:    exprAvailability,
+						Format:  toPtr("time_series"),
+						Instant: toPtr(true),
+						RefId:   "A",
+					},
+				},
+				Title: toPtr("Availability (selected time) "),
+				Type:  toPtr("stat"),
+			},
+			{
+				Bars:        toPtr(false),
+				DashLengths: toPtr(10),
+				Dashes:      toPtr(false),
+				Datasource: &Datasource{
+					Uid: toPtr("$datasource"),
+				},
+				Description:  toPtr("Number of requests per second by response codes."),
+				Fill:         toPtr(1),
+				FillGradient: toPtr(0),
+				GridPos: GridPos{
+					H: 8,
+					W: 7,
+					X: 3,
+					Y: 1,
+				},
+				HiddenSeries: toPtr(false),
+				Id:           fldId + 1,
+				Legend: &Legend{
+					Avg:     toPtr(false),
+					Current: toPtr(false),
+					Max:     toPtr(false),
+					Min:     toPtr(false),
+					Show:    toPtr(true),
+					Total:   toPtr(false),
+					Values:  toPtr(false),
+				},
+				Lines:         toPtr(true),
+				LineWidth:     toPtr(1),
+				NullPointMode: toPtr("null as zero"),
+				Options: &Options{
+					AlertThreshold: toPtr(true),
+				},
+				Percentage:    toPtr(false),
+				PluginVersion: toPtr("8.5.2"),
+				PointRadius:   toPtr(5),
+				Points:        toPtr(false),
+				Renderer:      toPtr("flot"),
+				SpaceLength:   toPtr(10),
+				Stack:         toPtr(false),
+				SteppedLine:   toPtr(false),
+				Targets: []Target{
+					{
+						Expr:         exprRequests,
+						LegendFormat: toPtr("{{code}} - {{method}} - {{deployment_ring}}"),
+						RefId:        "A",
+					},
+				},
+				Title: toPtr("Requests"),
+				Tooltip: &Tooltip{
+					Shared:    toPtr(true),
+					Sort:      toPtr(0),
+					ValueType: toPtr("individual"),
+				},
+				Type: toPtr("graph"),
+				XAxis: &XAxis{
+					Mode:   toPtr("time"),
+					Show:   toPtr(true),
+					Values: &[]string{},
+				},
+				Yaxes: &[]YAxe{
+					{
+						Format:  toPtr("reqps"),
+						LogBase: toPtr(1),
+						Show:    toPtr(true),
+					},
+					{
+						Format:  toPtr("short"),
+						LogBase: toPtr(1),
+						Show:    toPtr(true),
+					},
+				},
+				YAxis: &YAxis{
+					Align: toPtr(false),
+				},
+			},
+			{
+				Bars:        toPtr(false),
+				DashLengths: toPtr(10),
+				Dashes:      toPtr(false),
+				Datasource: &Datasource{
+					Uid: toPtr("$datasource"),
+				},
+				Description:  toPtr("The error percentage."),
+				Fill:         toPtr(0),
+				FillGradient: toPtr(0),
+				GridPos: GridPos{
+					H: 8,
+					W: 7,
+					X: 10,
+					Y: 1,
+				},
+				HiddenSeries: toPtr(false),
+				Id:           fldId + 2,
+				Legend: &Legend{
+					Avg:     toPtr(false),
+					Current: toPtr(false),
+					Max:     toPtr(false),
+					Min:     toPtr(false),
+					Show:    toPtr(true),
+					Total:   toPtr(false),
+					Values:  toPtr(false),
+				},
+				Lines:         toPtr(true),
+				LineWidth:     toPtr(1),
+				NullPointMode: toPtr("null as zero"),
+				Options: &Options{
+					AlertThreshold: toPtr(true),
+				},
+				Percentage:    toPtr(false),
+				PluginVersion: toPtr("8.5.2"),
+				PointRadius:   toPtr(5),
+				Points:        toPtr(false),
+				Renderer:      toPtr("flot"),
+				SpaceLength:   toPtr(10),
+				Stack:         toPtr(false),
+				SteppedLine:   toPtr(false),
+				Targets: []Target{
+					{
+						Expr:         exprErrors1,
+						LegendFormat: toPtr("non-2xx - {{deployment_ring}}"),
+						RefId:        "C",
+					},
+					{
+						Expr:         exprErrors2,
+						LegendFormat: toPtr("non-2xx and non-404 - {{deployment_ring}}"),
+						RefId:        "A",
+					},
+					// Here can be exprErrors3
+				},
+				Title: toPtr("Errors"),
+				Tooltip: &Tooltip{
+					Shared:    toPtr(true),
+					Sort:      toPtr(0),
+					ValueType: toPtr("individual"),
+				},
+				Type: toPtr("graph"),
+				XAxis: &XAxis{
+					Mode:   toPtr("time"),
+					Show:   toPtr(true),
+					Values: &[]string{},
+				},
+				Yaxes: &[]YAxe{
+					{
+						Format:  toPtr("percentunit"),
+						LogBase: toPtr(1),
+						Min:     toPtr("0"),
+						Show:    toPtr(true),
+					},
+					{
+						Format:  toPtr("short"),
+						LogBase: toPtr(1),
+						Show:    toPtr(true),
+					},
+				},
+				YAxis: &YAxis{
+					Align: toPtr(false),
+				},
+			},
+			{
+				Bars:        toPtr(false),
+				DashLengths: toPtr(10),
+				Dashes:      toPtr(false),
+				Datasource: &Datasource{
+					Uid: toPtr("$datasource"),
+				},
+				Description: toPtr("The request duration within which the API have served 99%, 95%, 50% of requests"),
+				GridPos: GridPos{
+					H: 8,
+					W: 7,
+					X: 17,
+					Y: 1,
+				},
+				HiddenSeries: toPtr(false),
+				Id:           fldId + 3,
+				Legend: &Legend{
+					Avg:     toPtr(false),
+					Current: toPtr(false),
+					Max:     toPtr(false),
+					Min:     toPtr(false),
+					Show:    toPtr(true),
+					Total:   toPtr(false),
+					Values:  toPtr(false),
+				},
+				Lines:         toPtr(true),
+				LineWidth:     toPtr(1),
+				NullPointMode: toPtr("null as zero"),
+				Options: &Options{
+					AlertThreshold: toPtr(true),
+				},
+				Percentage:    toPtr(false),
+				PluginVersion: toPtr("8.5.1"),
+				PointRadius:   toPtr(5),
+				Points:        toPtr(false),
+				Renderer:      toPtr("flot"),
+				SpaceLength:   toPtr(10),
+				Stack:         toPtr(false),
+				SteppedLine:   toPtr(false),
+				Targets: []Target{
+					{
+						Expr:         exprDuration,
+						Interval:     toPtr(""),
+						LegendFormat: toPtr("Avg. response duration (1m) - {{deployment_ring}}"),
+						RefId:        "A",
+					},
+				},
+				Title: toPtr("Duration"),
+				Tooltip: &Tooltip{
+					Shared:    toPtr(true),
+					Sort:      toPtr(0),
+					ValueType: toPtr("individual"),
+				},
+				Type: toPtr("graph"),
+				XAxis: &XAxis{
+					Mode:   toPtr("time"),
+					Show:   toPtr(true),
+					Values: toPtr([]string{}),
+				},
+				Yaxes: &[]YAxe{
+					{
+						Format:  toPtr("s"),
+						LogBase: toPtr(10),
+						Show:    toPtr(true),
+					},
+					{
+						Format:  toPtr("short"),
+						LogBase: toPtr(1),
+						Show:    toPtr(true),
+					},
+				},
+				YAxis: &YAxis{
+					Align: toPtr(false),
+				},
 			},
 			{
 				Datasource: &Datasource{
