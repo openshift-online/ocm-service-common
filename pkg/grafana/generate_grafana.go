@@ -57,6 +57,7 @@ func GenerateGrafana(configFile string, outputFile string) {
 	rowNum = -1
 	panelId = 0
 	datasource := config.PanelDatasource
+	openapiPanelPresents := false
 	for _, panelItem = range *config.Panels {
 		switch *panelItem.Type {
 		case "5items":
@@ -85,6 +86,7 @@ func GenerateGrafana(configFile string, outputFile string) {
 			)
 			grafana.Panels = append(grafana.Panels, panel)
 		case "openapi":
+			openapiPanelPresents = true
 			// Load and validate openapi
 			loader := openapi3.NewLoader()
 			loader.IsExternalRefsAllowed = true
@@ -122,7 +124,7 @@ func GenerateGrafana(configFile string, outputFile string) {
 		}
 	}
 
-	printGrafana(config, grafana, outputFile)
+	printGrafana(config, grafana, openapiPanelPresents, outputFile)
 }
 
 func createCustom(title string, datasource Datasource, panels []PanelItem, rowNum int, panelId int, fldId int, service string) (int, Panel) {
@@ -921,8 +923,13 @@ func createRoutes(datasource Datasource, title string, rowNum int, panelId int, 
 	return fldId + 5, panel
 }
 
-func printGrafana(config *Config, grafana Grafana, output string) {
-	b, _ := json.Marshal(grafana)
+func printGrafana(config *Config, grafana Grafana, openapiPanelPresents bool, output string) {
+	var b []byte
+	if openapiPanelPresents {
+		b, _ = json.MarshalIndent(grafana, "", "    ")
+	} else {
+		b, _ = json.Marshal(grafana)
+	}
 	var w io.Writer
 	if output != "" {
 		w, _ = os.Create(output)
