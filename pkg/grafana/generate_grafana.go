@@ -926,9 +926,9 @@ func createRoutes(datasource Datasource, title string, rowNum int, panelId int, 
 func printGrafana(config *Config, grafana Grafana, openapiPanelPresents bool, output string) {
 	var b []byte
 	if openapiPanelPresents {
-		b, _ = json.MarshalIndent(grafana, "", "    ")
-	} else {
 		b, _ = json.Marshal(grafana)
+	} else {
+		b, _ = json.MarshalIndent(grafana, "    ", "  ")
 	}
 	var w io.Writer
 	if output != "" {
