@@ -1,7 +1,7 @@
 package jira
 
 type CustomFieldType struct {
-	value string `json:"value,omitempty"`
+	Value string `json:"value,omitempty"`
 }
 
 type CustomFieldTypeBuilder struct {
@@ -19,6 +19,6 @@ func (c *CustomFieldTypeBuilder) Value(value string) *CustomFieldTypeBuilder {
 
 func (c *CustomFieldTypeBuilder) Build() CustomFieldType {
 	return CustomFieldType{
-		value: c.value,
+		Value: c.value,
 	}
 }
