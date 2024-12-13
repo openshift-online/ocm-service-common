@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/getsentry/sentry-go"
 	"github.com/rs/zerolog"
@@ -137,6 +138,7 @@ func init() {
 
 		return file + ":" + strconv.Itoa(line)
 	}
+	zerolog.TimeFieldFormat = time.RFC3339Nano
 }
 
 // NewOCMLogger creates a logger and initializes it
