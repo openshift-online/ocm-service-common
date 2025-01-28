@@ -56,7 +56,7 @@ func (t *Transport) RoundTrip(request *http.Request) (response *http.Response, e
 		msg = t.addPayloadToMessage(msg, &payload)
 		response.Body = io.NopCloser(strings.NewReader(payload))
 	}
-	t.Logger.Info(request.Context(), msg)
+	t.Logger.Info(request.Context(), "%s", msg)
 	return
 }
 
