@@ -3,7 +3,7 @@ package segment
 import (
 	"context"
 
-	logger "gitlab.cee.redhat.com/service/ocm-common/pkg/ocmlogger"
+	logger "github.com/openshift-online/ocm-service-common/pkg/ocmlogger"
 )
 
 type TrackServiceMock service

@@ -7,7 +7,7 @@ import (
 	"github.com/andygrunwald/go-jira"
 	errors "github.com/zgalor/weberr"
 
-	"gitlab.cee.redhat.com/service/ocm-common/utils"
+	"github.com/openshift-online/ocm-service-common/utils"
 )
 
 // This code is based on https://github.com/andygrunwald/go-jira
