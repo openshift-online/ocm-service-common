@@ -90,7 +90,7 @@ var _ = Describe("OCMLogger Sentry Integration", Label("logger"), func() {
 			lastFrame := stacktrace.Frames[len(stacktrace.Frames)-1]
 
 			//Any file modification risks breaking this test, I dont love it, but I cant think of a better way
-			Expect(lastFrame.AbsPath).To(ContainSubstring("ocm-common/pkg/ocmlogger/sentry_test.go"))
+			Expect(lastFrame.AbsPath).To(ContainSubstring("ocm-service-common/pkg/ocmlogger/sentry_test.go"))
 			Expect(lastFrame.Lineno).To(Equal(expectedLineNumber))
 		})
 
@@ -107,7 +107,7 @@ var _ = Describe("OCMLogger Sentry Integration", Label("logger"), func() {
 			lastFrame := stacktrace.Frames[len(stacktrace.Frames)-1]
 
 			//Any file modification risks breaking this test, I dont love it, but I cant think of a better way
-			Expect(lastFrame.AbsPath).To(ContainSubstring("ocm-common/pkg/ocmlogger/sentry_test.go"))
+			Expect(lastFrame.AbsPath).To(ContainSubstring("ocm-service-common/pkg/ocmlogger/sentry_test.go"))
 			Expect(lastFrame.Lineno).To(Equal(expectedLineNumber))
 		})
 	})
