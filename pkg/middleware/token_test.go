@@ -13,7 +13,7 @@ import (
 	"github.com/openshift-online/ocm-sdk-go/authentication"
 	. "github.com/openshift-online/ocm-sdk-go/testing"
 
-	test "gitlab.cee.redhat.com/service/ocm-common/pkg/test"
+	test "github.com/openshift-online/ocm-service-common/pkg/test"
 )
 
 const testUsername = "mturansk.openshift"
