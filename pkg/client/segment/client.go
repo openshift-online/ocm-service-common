@@ -18,8 +18,8 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/segmentio/analytics-go/v3"
 
-	clientPkg "gitlab.cee.redhat.com/service/ocm-common/pkg/client"
-	logger "gitlab.cee.redhat.com/service/ocm-common/pkg/ocmlogger"
+	clientPkg "github.com/openshift-online/ocm-service-common/pkg/client"
+	logger "github.com/openshift-online/ocm-service-common/pkg/ocmlogger"
 )
 
 type Client struct {

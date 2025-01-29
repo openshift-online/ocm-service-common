@@ -15,7 +15,7 @@ To cut a long filename of a caller you may use `SetTrimList` to initialize it ap
 #### Examples:
 
 ```
-import "gitlab.cee.redhat.com/service/ocm-common/ocmlogger"
+import "github.com/openshift-online/ocm-service-common/ocmlogger"
 
 ocmlog := logger.NewOCMLogger(context.Background())
 

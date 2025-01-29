@@ -11,7 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	. "github.com/onsi/gomega"
-	test "gitlab.cee.redhat.com/service/ocm-common/pkg/test"
+	test "github.com/openshift-online/ocm-service-common/pkg/test"
 	"golang.org/x/net/context"
 
 	"github.com/golang-jwt/jwt/v4"
