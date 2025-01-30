@@ -15,12 +15,12 @@ import (
 	sdklogging "github.com/openshift-online/ocm-sdk-go/logging"
 )
 
-// contextKey is the type of keys used to store operation identifiers in contexts.
-type contextKey int
+// ContextKey is the type of keys used to store operation identifiers in contexts.
+type ContextKey int
 
 const (
 	// opidKey is the key used to store operation identifiers in context
-	opidKey contextKey = iota
+	opidKey ContextKey = iota
 )
 
 // TransportWrapperBuilder contains the data and logic needed to create logging transport wrappers.
