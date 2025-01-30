@@ -203,7 +203,7 @@ func TestMiddlewareValidateWithCallbackPassthrough(t *testing.T) {
 	middleware := TokenScopeValidationMiddlewareImpl{
 		DenyScopes:     []string{"offline_access"},
 		RequiredScopes: []string{"api.ocm"},
-		CallbackFn:     callback,
+		CallbackFn:     emptyCallback,
 	}
 
 	handler := middleware.Handler(nextHandler)
@@ -319,7 +319,7 @@ func TestMiddlewareValidateOfflineAccessByOrganization(t *testing.T) {
 	Expect(recorder.Body.String()).To(ContainSubstring("offline access is restricted for organization"))
 
 	// Validate without the offline_access scope
-	middleware.CallbackFn = callback
+	middleware.CallbackFn = emptyCallback
 	nextHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		Expect(r.Method).To(Equal(http.MethodGet))
 	})
@@ -353,7 +353,7 @@ func TestMiddlewareValidateOfflineAccessByOrganization(t *testing.T) {
 
 }
 
-func TestMiddlewareValidateOfflineAccessByOrganizatioStart(t *testing.T) {
+func TestMiddlewareValidateOfflineAccessByOrganizationStart(t *testing.T) {
 	RegisterTestingT(t)
 
 	// Setup orgs
@@ -388,23 +388,23 @@ func TestMiddlewareValidateOfflineAccessByOrganizatioStart(t *testing.T) {
 	Expect(suite).NotTo(BeNil())
 	Expect(err).To(BeNil())
 
-	middleware := TokenScopeValidationMiddlewareImpl{
-		Connection:              suite.Connection(),
-		PollingIntervalOverride: 3 * time.Second,
-		CallbackFn:              callbackExpectError,
-	}
-
-	// Valid Base URL & Organizations
-	ulog, _ := sdk.NewGoLoggerBuilder().
+	ulog, err := sdk.NewGoLoggerBuilder().
 		Info(true).
 		Build()
+	Expect(err).ToNot(HaveOccurred())
 	startCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	middleware := NewTokenScopeValidationMiddleware(
+		WithConnection(suite.Connection()),
+		WithPollingInterval(3*time.Second),
+		WithCallback(callbackExpectError),
+		WithLogger(ulog),
+	)
+
 	go func() {
-		middleware.Start(startCtx, ulog)
+		middleware.Start(startCtx)
 	}()
-	// Just enough time for routine overhead
-	time.Sleep(200 * time.Millisecond)
+	// Valid Base URL & Organizations
 	Expect(middleware.isOfflineOrgRestrictionsEnabledSafe()).To(BeTrue())
 	Expect(middleware.offlineRestrictedOrgs).To(HaveLen(1))
 	Expect(middleware.isOrgRestrictedSafe(org1.ExternalID())).To(BeTrue())
@@ -442,7 +442,7 @@ func TestMiddlewareValidateOfflineAccessByOrganizatioStart(t *testing.T) {
 	Expect(recorder.Body.String()).To(ContainSubstring("offline access is restricted for organization"))
 
 	// Validate without the offline_access scope
-	middleware.CallbackFn = callback
+	middleware.CallbackFn = emptyCallback
 	nextHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		Expect(r.Method).To(Equal(http.MethodGet))
 	})
@@ -530,7 +530,7 @@ func TestMiddlewareValidateOfflineAccessByOrganizationCapabilityFailOpen(t *test
 	nextHandlerCalled = false
 
 	// Validate without the offline_access scope
-	middleware.CallbackFn = callback
+	middleware.CallbackFn = emptyCallback
 	handler = middleware.Handler(nextHandler)
 	ctx = generateBasicTokenCtx("openid", "123456")
 	request = request.WithContext(ctx)
@@ -601,7 +601,7 @@ func TestMiddlewareValidateOfflineAccessByOrganizationToggleFailOpen(t *testing.
 	nextHandlerCalled = false
 
 	// Validate without the offline_access scope
-	middleware.CallbackFn = callback
+	middleware.CallbackFn = emptyCallback
 	handler = middleware.Handler(nextHandler)
 	ctx = generateBasicTokenCtx("openid", restrictedOrg.ExternalID())
 	request = request.WithContext(ctx)
@@ -647,7 +647,7 @@ func TestMiddlewareGracefulHandlingAccessTokenPullSecret(t *testing.T) {
 	middleware := TokenScopeValidationMiddlewareImpl{
 		Connection:              suite.Connection(),
 		PollingIntervalOverride: 3 * time.Second,
-		CallbackFn:              callback,
+		CallbackFn:              emptyCallback,
 	}
 
 	stopPolling := middleware.StartPollingAMSForRestrictedOrgs()
@@ -726,7 +726,8 @@ func generateFeatureResponseJSON(flag string, value bool) string {
 	}`
 }
 
-func callback(w http.ResponseWriter, r *http.Request, err error) {
+func emptyCallback(w http.ResponseWriter, r *http.Request, err error) {
+	// This should be kept empty as it is just for testing purposes
 }
 
 func callbackExpectError(w http.ResponseWriter, r *http.Request, err error) {
