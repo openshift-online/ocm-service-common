@@ -163,9 +163,33 @@ func SetLogLevel(level string) error {
 }
 
 // SetOutput - used for testing
+// Whenever used, please be sure your io.Writer is threadsafe or you will end up with data races.
+// If you are testing, WrapUnsafeWriterWithLocks is an easy function to use to ensure this.
 func SetOutput(output io.Writer) {
 	rootLogger = rootLogger.Output(output)
 }
+
+// WrapUnsafeWriterWithLocks wraps any io.Writer with a lock during .Write to ensure guaranteed ordering.
+// Note, this does NOT mean that writes will not be interleaved since the library can choose how many bytes to write at once.
+func WrapUnsafeWriterWithLocks(writer io.Writer) io.Writer {
+	return &threadSafeWriter{
+		delegate: writer,
+	}
+}
+
+type threadSafeWriter struct {
+	lock     sync.Mutex
+	delegate io.Writer
+}
+
+func (t *threadSafeWriter) Write(p []byte) (n int, err error) {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+
+	return t.delegate.Write(p)
+}
+
+var _ io.Writer = &threadSafeWriter{}
 
 func RegisterExtraDataCallback(key string, callback func(ctx context.Context) any) {
 	retrieveExtraFromContextCallbacks[key] = callback

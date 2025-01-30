@@ -21,7 +21,7 @@ var _ = Describe("logger.Extra", Label("logger"), func() {
 	BeforeEach(func() {
 		ulog = NewOCMLogger(context.Background())
 		output = bytes.Buffer{}
-		SetOutput(&output)
+		SetOutput(WrapUnsafeWriterWithLocks(&output))
 		DeferCleanup(func() {
 			SetOutput(os.Stderr)
 		})

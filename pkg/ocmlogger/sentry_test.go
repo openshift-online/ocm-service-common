@@ -25,7 +25,7 @@ var _ = Describe("OCMLogger Sentry Integration", Label("logger"), func() {
 
 	BeforeEach(func() {
 		output = bytes.Buffer{}
-		SetOutput(&output)
+		SetOutput(WrapUnsafeWriterWithLocks(&output))
 		DeferCleanup(func() {
 			sentryTransport.Flush(0)
 			SetOutput(os.Stderr)
