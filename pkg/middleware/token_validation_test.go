@@ -395,6 +395,7 @@ func TestMiddlewareValidateOfflineAccessByOrganizationStart(t *testing.T) {
 	startCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	middleware := NewTokenScopeValidationMiddleware(
+		startCtx,
 		WithConnection(suite.Connection()),
 		WithPollingInterval(3*time.Second),
 		WithCallback(callbackExpectError),

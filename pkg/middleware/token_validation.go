@@ -88,13 +88,12 @@ type TokenScopeValidationMiddlewareImpl struct {
 	EnforceServiceAccountScopes   bool
 	PollingIntervalOverride       time.Duration
 	Logger                        logging.Logger
-
-	ctx context.Context
 }
 
 // Provides a new instance of middleware implementation
 // and runs pre requisites for the first time
 func NewTokenScopeValidationMiddleware(
+	ctx context.Context,
 	options ...TokenScopeValidationMiddwareOption) *TokenScopeValidationMiddlewareImpl {
 	tokenMiddleware := &TokenScopeValidationMiddlewareImpl{}
 	for _, option := range options {
@@ -108,11 +107,11 @@ func NewTokenScopeValidationMiddleware(
 	}
 
 	if tokenMiddleware.Connection == nil {
-		tokenMiddleware.Logger.Debug(tokenMiddleware.ctx, "OCM SDK connection is missing, offline token restrictions will not be enforced")
+		tokenMiddleware.Logger.Debug(ctx, "OCM SDK connection is missing, offline token restrictions will not be enforced")
 		return tokenMiddleware
 	}
 
-	tokenMiddleware.preSteps(tokenMiddleware.ctx, tokenMiddleware.Logger)
+	tokenMiddleware.preSteps(ctx, tokenMiddleware.Logger)
 	return tokenMiddleware
 }
 
