@@ -49,8 +49,10 @@ type TokenScopeValidationMiddleware interface {
 	ValidateOfflineAccessByOrg(ctx context.Context) error
 
 	StartPollingAMSForRestrictedOrgs() context.CancelFunc
-	Start(ctx context.Context, ulog logging.Logger)
+	Start(ctx context.Context)
 }
+
+type callback func(http.ResponseWriter, *http.Request, error)
 
 // TokenScopeValidationMiddlewareImpl provides a middleware that enables validation on the JWT token of an incoming request
 // based on the configuration provided.
@@ -82,10 +84,36 @@ type TokenScopeValidationMiddlewareImpl struct {
 	ErrorOnMissingToken           bool
 	DenyScopes                    []string
 	RequiredScopes                []string
-	CallbackFn                    func(http.ResponseWriter, *http.Request, error)
+	CallbackFn                    callback
 	EnforceServiceAccountScopes   bool
 	PollingIntervalOverride       time.Duration
 	Logger                        logging.Logger
+
+	ctx context.Context
+}
+
+// Provides a new instance of middleware implementation
+// and runs pre requisites for the first time
+func NewTokenScopeValidationMiddleware(
+	options ...TokenScopeValidationMiddwareOption) *TokenScopeValidationMiddlewareImpl {
+	tokenMiddleware := &TokenScopeValidationMiddlewareImpl{}
+	for _, option := range options {
+		option(tokenMiddleware)
+	}
+
+	if tokenMiddleware.Logger == nil {
+		tokenMiddleware.Logger, _ = sdk.NewGoLoggerBuilder().
+			Info(true).
+			Build()
+	}
+
+	if tokenMiddleware.Connection == nil {
+		tokenMiddleware.Logger.Debug(tokenMiddleware.ctx, "OCM SDK connection is missing, offline token restrictions will not be enforced")
+		return tokenMiddleware
+	}
+
+	tokenMiddleware.preSteps(tokenMiddleware.ctx, tokenMiddleware.Logger)
+	return tokenMiddleware
 }
 
 var _ TokenScopeValidationMiddleware = &TokenScopeValidationMiddlewareImpl{}
@@ -261,6 +289,7 @@ func (t *TokenScopeValidationMiddlewareImpl) ValidateOfflineAccessByOrg(ctx cont
 // function to repeat the operation. This should be called once at the start
 // of the application, before the server starts accepting requests.
 // For services that will let ocm-common manage the routine
+// StartPollingAMSForRestrictedOrgs uses ctx.Background, look into Start for more control over context
 func (t *TokenScopeValidationMiddlewareImpl) StartPollingAMSForRestrictedOrgs() context.CancelFunc {
 	ulog := t.Logger
 	if ulog == nil {
@@ -304,12 +333,13 @@ func (t *TokenScopeValidationMiddlewareImpl) createTicker(ctx context.Context, u
 }
 
 // For services that have a routine manager
-func (t *TokenScopeValidationMiddlewareImpl) Start(ctx context.Context, ulog logging.Logger) {
+// Relies on context set by WithContext
+func (t *TokenScopeValidationMiddlewareImpl) Start(ctx context.Context) {
+	ulog := t.Logger
 	if t.Connection == nil {
 		ulog.Debug(ctx, "OCM SDK connection is missing, offline token restrictions will not be enforced")
 		return
 	}
-	t.preSteps(ctx, ulog)
 
 	pollTicker := t.createTicker(ctx, ulog)
 	for {
