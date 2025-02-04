@@ -138,6 +138,7 @@ func (r *roundTripper) RoundTrip(request *http.Request) (response *http.Response
 	// In particular, we can't know what is the response time or length. To do so we need to
 	// replace the response body with one that allows us to get that information.
 	response.Body = &responseBody{
+		ctx:    ctx,
 		logger: r.logger,
 		method: method,
 		url:    url,
