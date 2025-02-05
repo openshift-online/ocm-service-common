@@ -353,20 +353,23 @@ func (t *TokenScopeValidationMiddlewareImpl) Start(ctx context.Context) {
 }
 
 func (t *TokenScopeValidationMiddlewareImpl) preSteps(ctx context.Context, ulog logging.Logger) {
-	successfulOrgInit, _ := t.populateOfflineRestrictedOrgs()
+	successfulOrgInit, err := t.populateOfflineRestrictedOrgs(ctx)
 
 	if successfulOrgInit {
-		ulog.Info(ctx, "Successfully initialized offline access org restrictions, org list: %v total orgs",
+		ulog.Info(ctx,
+			"Successfully initialized offline access org restrictions, org list: %v total orgs",
 			t.getOfflineRestrictedOrgCountSafe())
 	} else {
 		// Log and continue, the goroutine will attempt to self-heal.
 		// API requests will fail open and offline access will be allowed.
 		ulog.Error(ctx,
-			"Failed to initialize offline access restricted orgs, restrictions will not be applied until self-healing occurs",
+			//nolint:lll
+			"Failed to initialize offline access restricted orgs, restrictions will not be applied until self-healing occurs: %v",
+			err,
 		)
 	}
 
-	successfulFlagInit, _ := t.checkEnforceOfflineOrgRestrictions(ctx)
+	successfulFlagInit, err := t.checkEnforceOfflineOrgRestrictions(ctx)
 
 	enforceOfflineOrgRestrictions := t.isOfflineOrgRestrictionsEnabledSafe()
 
@@ -376,7 +379,8 @@ func (t *TokenScopeValidationMiddlewareImpl) preSteps(ctx context.Context, ulog 
 		// Log and continue, the goroutine will attempt to self-heal.
 		// API requests will fail open and offline access will be allowed.
 		ulog.Error(ctx,
-			"Failed to initialize offline enforcement flag, restrictions will not be applied until self-healing occurs",
+			"Failed to initialize offline enforcement flag, restrictions will not be applied until self-healing occurs: %v",
+			err,
 		)
 	}
 }
@@ -385,7 +389,7 @@ func (t *TokenScopeValidationMiddlewareImpl) check(
 	ctx context.Context, ulog logging.Logger) {
 	// Populate the orgs
 	ulog.Info(ctx, "Polling AMS for org restrictions...")
-	if _, err := t.populateOfflineRestrictedOrgs(); err != nil {
+	if _, err := t.populateOfflineRestrictedOrgs(ctx); err != nil {
 		ulog.Error(ctx, "Failed AMS polling for org restrictions: %v", err)
 		ulog.Info(ctx, "Continuing to use existing org list: %d total orgs", t.getOfflineRestrictedOrgCountSafe())
 	} else {
@@ -422,7 +426,7 @@ func (t *TokenScopeValidationMiddlewareImpl) checkEnforceOfflineOrgRestrictions(
 
 // Populates t.offlineRestrictedOrgs map with the result from AMS labels and organizations API
 // Returns true if the operation was successful, false otherwise
-func (t *TokenScopeValidationMiddlewareImpl) populateOfflineRestrictedOrgs() (bool, error) {
+func (t *TokenScopeValidationMiddlewareImpl) populateOfflineRestrictedOrgs(ctx context.Context) (bool, error) {
 	offlineRestrictedOrgs := make(map[string]bool)
 
 	if t.Connection == nil {
@@ -433,7 +437,7 @@ func (t *TokenScopeValidationMiddlewareImpl) populateOfflineRestrictedOrgs() (bo
 	labelResponse, err := api.Labels().List().Search(
 		fmt.Sprintf("key = '%s'", OfflineAccessCapabilityKey) +
 			" and internal = true and value = 'true'",
-	).Send()
+	).SendContext(ctx)
 	if err != nil {
 		return false, err
 	}
@@ -458,7 +462,7 @@ func (t *TokenScopeValidationMiddlewareImpl) populateOfflineRestrictedOrgs() (bo
 
 	// Fetch external org IDs to match on the JWT claim
 	orgResponse, err := api.Organizations().List().
-		Search(fmt.Sprintf("id in (%s)", strings.Join(quotedOrganizations, ", "))).Send()
+		Search(fmt.Sprintf("id in (%s)", strings.Join(quotedOrganizations, ", "))).SendContext(ctx)
 	if err != nil {
 		// We have organizations to restrict, but failed to fetch them
 		// Do not reset the map, we will retry on the next polling interval
