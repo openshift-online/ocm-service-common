@@ -353,20 +353,23 @@ func (t *TokenScopeValidationMiddlewareImpl) Start(ctx context.Context) {
 }
 
 func (t *TokenScopeValidationMiddlewareImpl) preSteps(ctx context.Context, ulog logging.Logger) {
-	successfulOrgInit, _ := t.populateOfflineRestrictedOrgs(ctx)
+	successfulOrgInit, err := t.populateOfflineRestrictedOrgs(ctx)
 
 	if successfulOrgInit {
-		ulog.Info(ctx, "Successfully initialized offline access org restrictions, org list: %v total orgs",
+		ulog.Info(ctx,
+			"Successfully initialized offline access org restrictions, org list: %v total orgs",
 			t.getOfflineRestrictedOrgCountSafe())
 	} else {
 		// Log and continue, the goroutine will attempt to self-heal.
 		// API requests will fail open and offline access will be allowed.
 		ulog.Error(ctx,
-			"Failed to initialize offline access restricted orgs, restrictions will not be applied until self-healing occurs",
+			//nolint:lll
+			"Failed to initialize offline access restricted orgs, restrictions will not be applied until self-healing occurs: %v",
+			err,
 		)
 	}
 
-	successfulFlagInit, _ := t.checkEnforceOfflineOrgRestrictions(ctx)
+	successfulFlagInit, err := t.checkEnforceOfflineOrgRestrictions(ctx)
 
 	enforceOfflineOrgRestrictions := t.isOfflineOrgRestrictionsEnabledSafe()
 
@@ -376,7 +379,8 @@ func (t *TokenScopeValidationMiddlewareImpl) preSteps(ctx context.Context, ulog 
 		// Log and continue, the goroutine will attempt to self-heal.
 		// API requests will fail open and offline access will be allowed.
 		ulog.Error(ctx,
-			"Failed to initialize offline enforcement flag, restrictions will not be applied until self-healing occurs",
+			"Failed to initialize offline enforcement flag, restrictions will not be applied until self-healing occurs: %v",
+			err,
 		)
 	}
 }
