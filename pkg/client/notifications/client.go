@@ -12,7 +12,7 @@ import (
 
 	"github.com/gorilla/mux"
 
-	logger "gitlab.cee.redhat.com/service/ocm-common/pkg/ocmlogger"
+	logger "github.com/openshift-online/ocm-service-common/pkg/ocmlogger"
 )
 
 type NotificationSender interface {
