@@ -27,8 +27,9 @@ func TrackSegment(ctx context.Context, event string, ocmResourceType string, ini
 		if client != nil {
 			err := client.TrackService.Track(ctx, event, ocmResourceType, initiator, nil, nil)
 			if err != nil {
-				ulog.Err(err).Extra("Event Name", event).Extra("ocmResourceType", ocmResourceType).
-					Extra("initiator", initiator).Error("Segment Track")
+				ulog.Contextual().Error(err, "Segment Track",
+					"Event Name", event, "ocmResourceType", ocmResourceType, "initiator", initiator,
+				)
 			}
 		}
 	}()
@@ -42,8 +43,9 @@ func TrackSegmentWithSubscription(ctx context.Context, event string, ocmResource
 			ulog.Info("Track event=%s ocmResourceType=%s initiator=%s creatorRhitWebUserId=%v subscription=%v", event, ocmResourceType, initiator, creatorRhitWebUserId, subscription)
 			err := client.TrackService.Track(ctx, event, ocmResourceType, initiator, subscription, creatorRhitWebUserId)
 			if err != nil {
-				ulog.Err(err).Extra("Event Name", event).Extra("ocmResourceType", ocmResourceType).
-					Extra("initiator", initiator).Extra("subscription", subscription).Error("Segment Track")
+				ulog.Contextual().Error(err, "Segment Track",
+					"Event Name", event, "ocmResourceType", ocmResourceType, "initiator", initiator,
+				)
 			}
 		}
 	}()
@@ -57,7 +59,7 @@ func TrackSegmentWithAccount(ctx context.Context, account *Account, isOrgAdmin *
 			ulog.Info("TrackAccount account=%v", account)
 			err := client.TrackService.TrackAccount(ctx, account, isOrgAdmin)
 			if err != nil {
-				ulog.Err(err).Extra("account", account).Error("Segment TrackAccount")
+				ulog.Contextual().Error(err, "Segment TrackAccount", "account", account)
 			}
 		}
 	}()

@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -43,19 +44,19 @@ func NewClient(ctx context.Context, config *ClientConfiguration, metricsMiddlewa
 	ulog := logger.NewOCMLogger(ctx)
 
 	if _, err = url.Parse(config.BaseURL); err != nil {
-		ulog.Err(err).Error("Notifications base url.Parse")
+		ulog.Contextual().Error(err, "Notifications base url.Parse")
 		return nil, err
 	}
 
 	if len(config.ProxyURL) != 0 {
 		if proxyURL, err = url.Parse(config.ProxyURL); err != nil {
-			ulog.Err(err).Error("Notifications proxy url.Parse")
+			ulog.Contextual().Error(err, "Notifications proxy url.Parse")
 			return nil, err
 		}
 	}
 
 	if certificate, err = tls.X509KeyPair([]byte(config.Cert), []byte(config.Key)); err != nil {
-		ulog.Err(err).Error("Notifications tls.X509KeyPair")
+		ulog.Contextual().Error(err, "Notifications tls.X509KeyPair")
 		return nil, err
 	}
 
@@ -80,28 +81,28 @@ func (n *Client) Send(ctx context.Context, payload *NotificationPayload) error {
 	ulog := logger.NewOCMLogger(ctx)
 	body, err := json.Marshal(*payload)
 	if err != nil {
-		ulog.Err(err).Extra("payload", *payload).Error("Notifications.send: read body")
+		ulog.Contextual().Error(err, "Notifications.send: read body", "payload", *payload)
 		return err
 	}
 	req, err := http.NewRequest(http.MethodPost, n.Config.BaseURL, bytes.NewReader(body))
 	if err != nil {
-		ulog.Err(err).Extra("payload", *payload).Error("Notifications.send: http.NewRequest")
+		ulog.Contextual().Error(err, "Notifications.send: http.NewRequest", "payload", *payload)
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	res, err := n.HTTPClient.Do(req)
 	if err != nil {
-		ulog.Err(err).Extra("payload", *payload).Error("Notifications.send: .Do(req)")
+		ulog.Contextual().Error(err, "Notifications.send: .Do(req)", "payload", *payload)
 		return err
 	}
 	if res.StatusCode != http.StatusOK {
-		ulog.Extra("payload", *payload).Error("Notifications.status: .Do(req): %d", res.StatusCode)
+		ulog.Contextual().Error(err, fmt.Sprintf("Notifications.status: .Do(req): %d", res.StatusCode), "payload", *payload)
 		return errors.New(http.StatusText(res.StatusCode))
 	}
 	resBody, err := io.ReadAll(res.Body)
 	if err != nil {
-		ulog.Err(err).Extra("payload", *payload).Error("Notifications.send: read body")
+		ulog.Contextual().Error(err, "Notifications.send: read body", "payload", *payload)
 		return err
 	}
 	type responseType struct {
@@ -111,15 +112,15 @@ func (n *Client) Send(ctx context.Context, payload *NotificationPayload) error {
 	var response responseType
 	err = json.Unmarshal(resBody, &response)
 	if err != nil {
-		ulog.Err(err).Extra("payload", *payload).Extra("response-body", resBody).Error("Notifications.send: response body is not JSON")
+		ulog.Contextual().Error(err, "Notifications.send: response body is not JSON", "payload", *payload, "response-body", resBody)
 		return nil
 	}
 	if response.Result == "error" {
-		ulog.Extra("payload", *payload).Extra("response", response).Error("Notifications Email received error")
+		ulog.Contextual().Error(nil, "Notifications Email received error", "payload", *payload, "response", response)
 		return errors.New(response.Details)
 	}
 
-	ulog.Extra("payload", *payload).Extra("response-body", resBody).Extra("response status", res.StatusCode).Extra("response", response).Info("Notifications Email received success")
+	ulog.Contextual().Info("Notifications Email received success", "payload", *payload, "response-body", resBody, "response status", res.StatusCode, "response", response)
 	return nil
 }
 

@@ -82,6 +82,7 @@ var _ = Describe("OCMLogger Sentry Integration", Label("logger"), func() {
 			expectedLineNumber := 81 // ^^^
 
 			ulog.Err(err).Error("ERROR")
+
 			Expect(sentryTransport.lastEvent).NotTo(BeNil())
 			Expect(sentryTransport.lastEvent.Exception).To(HaveLen(1))
 			Expect(sentryTransport.lastEvent.Exception[0].Stacktrace).NotTo(BeNil())

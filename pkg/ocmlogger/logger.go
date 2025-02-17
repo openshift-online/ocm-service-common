@@ -20,6 +20,10 @@ import (
 
 // OCMLogger interface should not expose any implementation details like zerolog.Level for example
 type OCMLogger interface {
+	// Contextual provides an interface with standard contextual logging libraries.
+	// It is required for providing additional key/value pairs like the old Err and Extra functions.
+	Contextual() ContextualLogger
+
 	Err(err error) OCMLogger
 	// Extra stores a key-value pair in a map; entry with the same key will be overwritten
 	// All simple (non-struct, non-slice, non-map etc.)
@@ -230,45 +234,95 @@ func (l *logger) CaptureSentryEvent(capture bool) OCMLogger {
 }
 
 func (l *logger) Info(args ...any) {
-	l.log(zerolog.InfoLevel, args...)
+	switch len(args) {
+	case 0:
+		l.log(zerolog.InfoLevel, "", nil, nil)
+	case 1:
+		l.log(zerolog.InfoLevel, args[0].(string), nil, nil)
+	default:
+		l.log(zerolog.InfoLevel, fmt.Sprintf(args[0].(string), args[1:]), nil, nil)
+	}
 }
 
 func (l *logger) Debug(args ...any) {
-	l.log(zerolog.DebugLevel, args...)
+	switch len(args) {
+	case 0:
+		l.log(zerolog.DebugLevel, "", nil, nil)
+	case 1:
+		l.log(zerolog.DebugLevel, args[0].(string), nil, nil)
+	default:
+		l.log(zerolog.DebugLevel, fmt.Sprintf(args[0].(string), args[1:]), nil, nil)
+	}
 }
 
 func (l *logger) Trace(args ...any) {
-	l.log(zerolog.TraceLevel, args...)
+	switch len(args) {
+	case 0:
+		l.log(zerolog.TraceLevel, "", nil, nil)
+	case 1:
+		l.log(zerolog.TraceLevel, args[0].(string), nil, nil)
+	default:
+		l.log(zerolog.TraceLevel, fmt.Sprintf(args[0].(string), args[1:]), nil, nil)
+	}
 }
 
 func (l *logger) Warning(args ...any) {
-	l.log(zerolog.WarnLevel, args...)
-}
-
-func (l *logger) Error(args ...any) {
-	l.log(zerolog.ErrorLevel, args...)
+	switch len(args) {
+	case 0:
+		l.log(zerolog.WarnLevel, "", nil, nil)
+	case 1:
+		l.log(zerolog.WarnLevel, args[0].(string), nil, nil)
+	default:
+		l.log(zerolog.WarnLevel, fmt.Sprintf(args[0].(string), args[1:]), nil, nil)
+	}
 }
 
 func (l *logger) Fatal(args ...any) {
-	l.log(zerolog.FatalLevel, args...)
+	switch len(args) {
+	case 0:
+		l.log(zerolog.FatalLevel, "", nil, nil)
+	case 1:
+		l.log(zerolog.FatalLevel, args[0].(string), nil, nil)
+	default:
+		l.log(zerolog.FatalLevel, fmt.Sprintf(args[0].(string), args[1:]), nil, nil)
+	}
+}
+
+func (l *logger) Error(args ...any) {
+	switch len(args) {
+	case 0:
+		l.log(zerolog.ErrorLevel, "", nil, nil)
+	case 1:
+		l.log(zerolog.ErrorLevel, args[0].(string), nil, nil)
+	default:
+		l.log(zerolog.ErrorLevel, fmt.Sprintf(args[0].(string), args[1:]), nil, nil)
+	}
 }
 
 // Note: use the various "Depth" logging functions, so we get the correct file/line number in the logs
-func (l *logger) log(level zerolog.Level, args ...any) {
+func (l *logger) log(level zerolog.Level, message string, err error, keysAndValues []interface{}) {
 
 	defer func() {
 		l.Err(nil)
 		l.ClearExtras()
 	}()
 
-	message := ""
-	if len(args) > 0 {
-		message = args[0].(string)
-		args = args[1:]
+	// TODO provided only for a controlled migration to non-racy code.
+	if len(keysAndValues) == 0 {
+		l.lock.Lock()
+		for k, v := range l.extra {
+			keysAndValues = append(keysAndValues, k, v)
+		}
+		l.lock.Unlock()
 	}
 
-	if message == "" && l.err != nil {
-		message = l.err.Error()
+	// TODO provided only for a controlled migration to non-racy code.
+	if err == nil && l.err != nil {
+		err = l.err
+	}
+
+	if message == "" && err != nil {
+		message = err.Error()
 	}
 
 	// by default only capture sentry events for error and fatal levels
@@ -280,19 +334,19 @@ func (l *logger) log(level zerolog.Level, args ...any) {
 	}
 
 	// make sure we have all the extras from the context before trying to capture the sentry event
-	l.populateExtrasFromContext()
+	keysAndValues = append(keysAndValues, extrasFromContext(l.ctx)...)
 
 	if captureSentry {
-		sentryId := l.tryCaptureSentryEvent(level, message, args...)
+		sentryId := l.tryCaptureSentryEvent(level, message, err, keysAndValues)
 		if sentryId != nil {
-			l.Extra("SentryEventID", sentryId)
+			keysAndValues = append(keysAndValues, "SentryEventID", sentryId)
 		}
 	}
 
-	event := l.createLogEvent(level)
+	event := l.createLogEvent(level, err, keysAndValues)
 
 	if event.Enabled() {
-		event.Msgf(message, args...)
+		event.Msg(message)
 		event.Discard()
 	}
 
@@ -301,25 +355,18 @@ func (l *logger) log(level zerolog.Level, args ...any) {
 	}
 }
 
-func (l *logger) tryCaptureSentryEvent(level zerolog.Level, message string, args ...any) *sentry.EventID {
+func (l *logger) tryCaptureSentryEvent(level zerolog.Level, message string, err error, keysAndValues []interface{}) *sentry.EventID {
 	event := sentry.NewEvent()
 	event.Level = sentryLevelMapping[level]
-	event.Message = fmt.Sprintf(message, args...)
+	event.Message = message
 	event.Fingerprint = []string{getMD5Hash(event.Message)}
+	event.Extra = contextToLegacyExtra(keysAndValues)
 
-	// lock and copy extras since the Sentry lib publishes events asynchronously and we cant guarantee when the Extra map will be accessed
-	l.lock.RLock()
-	event.Extra = make(map[string]interface{}, len(l.extra))
-	for k, v := range l.extra {
-		event.Extra[k] = v
-	}
-	l.lock.RUnlock()
-
-	if l.err != nil || level == zerolog.ErrorLevel || level == zerolog.FatalLevel {
+	if err != nil || level == zerolog.ErrorLevel || level == zerolog.FatalLevel {
 		var sentryStack *sentry.Stacktrace
-		if l.err != nil {
+		if err != nil {
 			// support errors that include a stacktrace, such as github.com/pkg/errors
-			sentryStack = sentry.ExtractStacktrace(l.err)
+			sentryStack = sentry.ExtractStacktrace(err)
 		}
 		if sentryStack == nil {
 			sentryStack = sentry.NewStacktrace()
@@ -362,42 +409,69 @@ func (l *logger) populateExtrasFromContext() {
 	}
 }
 
-func (l *logger) createLogEvent(level zerolog.Level) *zerolog.Event {
+func extrasFromContext(ctx context.Context) []interface{} {
+	ret := []interface{}{}
+	for k, callback := range retrieveExtraFromContextCallbacks {
+		if callback != nil {
+			v := callback(ctx)
+			ret = append(ret, k, v)
+		}
+	}
+	return ret
+}
+
+const (
+	// missingValue matches the klog missing value marker
+	missingValue = "(MISSING)"
+)
+
+func contextToLegacyExtra(keysAndValues []interface{}) map[string]interface{} {
+	if len(keysAndValues) == 0 {
+		return nil
+	}
+
+	ret := map[string]interface{}{}
+	currKey := "" // tracked to handle mismatch in len
+	for i, curr := range keysAndValues {
+		isKey := i%2 == 0
+		if isKey {
+			var ok bool
+			currKey, ok = curr.(string)
+			switch {
+			case !ok:
+				currKey = fmt.Sprintf("(NOT_A_STRING[%d])", i)
+			case len(currKey) == 0:
+				currKey = fmt.Sprintf("(MISSING_KEY[%d])", i)
+			}
+			continue
+		}
+
+		ret[currKey] = curr
+
+		// reset
+		currKey = ""
+	}
+
+	if len(currKey) > 0 {
+		ret[currKey] = missingValue
+	}
+
+	return ret
+}
+
+func (l *logger) createLogEvent(level zerolog.Level, err error, extraKeysAndValues []interface{}) *zerolog.Event {
 	event := rootLogger.WithLevel(level).
 		Caller(baseCallerSkipLevel + l.additionalCallLevelSkips).
-		Err(l.err)
+		Err(err)
 
-	if len(l.extra) > 0 {
-		dict := zerolog.Dict()
-		l.lock.RLock()
-		for k, v := range l.extra {
-			switch typ := v.(type) {
-			case string:
-				dict.Str(k, typ)
-			case bool:
-				dict.Bool(k, typ)
-			case int:
-				dict.Int(k, typ)
-			case int8:
-				dict.Int8(k, typ)
-			case int16:
-				dict.Int16(k, typ)
-			case int32:
-				dict.Int32(k, typ)
-			case int64:
-				dict.Int64(k, typ)
-			case float32:
-				dict.Float32(k, typ)
-			case float64:
-				dict.Float64(k, typ)
-			default:
-				// Note: reflection is expensive, but we need it to add structs like `http.Request` or `http.Response` etc.
-				dict.Any(k, v)
-			}
-		}
-		l.lock.RUnlock()
-		event.Dict("Extra", dict)
+	if len(extraKeysAndValues) > 0 {
+		// this extra nesting is required for serialization equality with old serializations.
+		// TODO 1. choose new serialization and start producing it
+		// TODO 2. update all consuming code to handle a new serialization format
+		// TODO 3. remove this extra nesting
+		event = event.Fields([]interface{}{"Extra", contextToLegacyExtra(extraKeysAndValues)})
 	}
+
 	return event
 }
 
@@ -410,4 +484,8 @@ func getMD5Hash(text string) string {
 	hasher := md5.New()
 	hasher.Write([]byte(text))
 	return hex.EncodeToString(hasher.Sum(nil))
+}
+
+func (l *logger) Contextual() ContextualLogger {
+	return &contextualWrapper{delegate: l}
 }
