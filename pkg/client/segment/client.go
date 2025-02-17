@@ -50,7 +50,7 @@ func init() {
 		if err != nil {
 			ctx := r.Context()
 			ulog := logger.NewOCMLogger(ctx)
-			ulog.Err(err).Error("could not read body")
+			ulog.Contextual().Error(err, "could not read body")
 		}
 		_ = json.Unmarshal(body, &values)
 

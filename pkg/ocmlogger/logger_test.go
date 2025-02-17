@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"os"
@@ -67,6 +68,34 @@ var _ = Describe("logger.Extra", Label("logger"), func() {
 			Expect(result).To(ContainSubstring("\"float32\":32.01"))
 			Expect(result).To(ContainSubstring("\"float64\":64.01"))
 		})
+		It("all simple types are in keysAndValues", func() {
+			ulog.Contextual().Error(
+				nil,
+				"message",
+				"true", true,
+				"false", false,
+				"int", 1,
+				"int8", int8(8),
+				"int16", int16(16),
+				"int32", int32(32),
+				"float32", float32(32.01),
+				"float64", 64.01,
+			)
+
+			resultBytes, err := io.ReadAll(&output)
+			Expect(err).NotTo(HaveOccurred())
+			result := string(resultBytes)
+
+			Expect(result).To(ContainSubstring("\"Extra\":{"))
+			Expect(result).To(ContainSubstring("\"true\":true"))
+			Expect(result).To(ContainSubstring("\"false\":false"))
+			Expect(result).To(ContainSubstring("\"int\":1"))
+			Expect(result).To(ContainSubstring("\"int8\":8"))
+			Expect(result).To(ContainSubstring("\"int16\":16"))
+			Expect(result).To(ContainSubstring("\"int32\":32"))
+			Expect(result).To(ContainSubstring("\"float32\":32.01"))
+			Expect(result).To(ContainSubstring("\"float64\":64.01"))
+		})
 	})
 
 	Context("setting same key", func() {
@@ -75,6 +104,16 @@ var _ = Describe("logger.Extra", Label("logger"), func() {
 			ulog.Extra("key1", 2)
 			ulog.Warning("warning")
 
+			result := output.String()
+			Expect(result).To(ContainSubstring("\"key1\":2"))
+		})
+		It("overrides value in keysAndValues", func() {
+			ulog.Contextual().Error(
+				nil,
+				"warning",
+				"key1", 1,
+				"key1", 2,
+			)
 			result := output.String()
 			Expect(result).To(ContainSubstring("\"key1\":2"))
 		})
@@ -102,6 +141,42 @@ var _ = Describe("logger.Extra", Label("logger"), func() {
 			ulog.Extra("resp2", resp2)
 
 			ulog.Warning("warning")
+
+			result := output.String()
+			Expect(result).To(ContainSubstring("\"resp1\":{"))
+			Expect(result).To(ContainSubstring("\"resp2\":{"))
+			Expect(result).To(ContainSubstring("\"StatusCode\":200"))
+			Expect(result).To(ContainSubstring("\"StatusCode\":404"))
+			Expect(result).To(ContainSubstring("\"Header\":{\"Content-Length\":[\"0\"],\"Content-Type\":[\"application/json\"]}"))
+			Expect(result).To(ContainSubstring("\"Header\":{\"Content-Length\":[\"100\"],\"Content-Type\":[\"application/xml\"]}"))
+			Expect(result).To(ContainSubstring("\"StatusCode\":404"))
+		})
+
+		It("each will present in output from keysAndValues", func() {
+			headers1 := http.Header{}
+			headers1["Content-Type"] = []string{"application/json"}
+			headers1["Content-Length"] = []string{"0"}
+
+			resp1 := http.Response{
+				StatusCode: 200,
+				Header:     headers1,
+			}
+
+			headers2 := http.Header{}
+			headers2["Content-Type"] = []string{"application/xml"}
+			headers2["Content-Length"] = []string{"100"}
+			resp2 := http.Response{
+				StatusCode: 404,
+				Header:     headers2,
+			}
+
+			ulog.Contextual().Error(
+				nil,
+				"warning",
+				"resp1", resp1,
+				"resp2", resp2,
+			)
+
 			result := output.String()
 			Expect(result).To(ContainSubstring("\"resp1\":{"))
 			Expect(result).To(ContainSubstring("\"resp2\":{"))
@@ -117,6 +192,14 @@ var _ = Describe("logger.Extra", Label("logger"), func() {
 		It("adds error message, sets level to error", func() {
 			ulog.Err(fmt.Errorf("error-message"))
 			ulog.CaptureSentryEvent(false).Error("ERROR")
+
+			result := output.String()
+			Expect(result).To(ContainSubstring("\"level\":\"error\","))
+			Expect(result).To(ContainSubstring("\"error\":\"error-message\","))
+			Expect(result).To(ContainSubstring("\"message\":\"ERROR\""))
+		})
+		It("adds error message, sets level to error, non-racy", func() {
+			ulog.CaptureSentryEvent(false).Contextual().Error(fmt.Errorf("error-message"), "ERROR")
 
 			result := output.String()
 			Expect(result).To(ContainSubstring("\"level\":\"error\","))
@@ -215,6 +298,14 @@ var _ = Describe("logger.Extra", Label("logger"), func() {
 				}(i)
 			}
 		})
+		It("Contextual().Error() is thread safe", func() {
+			parallelLog := NewOCMLogger(context.Background())
+			for i := 0; i < maxChaos; i++ {
+				go func(i int) {
+					parallelLog.Contextual().Error(fmt.Errorf("err %d", i), fmt.Sprintf("Err() %d", i))
+				}(i)
+			}
+		})
 		It("Lots of extras and an error for fun", func() {
 			parallelLog := NewOCMLogger(context.Background())
 			maxExtras := int(math.Sqrt(math.Max(float64(maxChaos*maxChaos), 10000)))
@@ -224,6 +315,19 @@ var _ = Describe("logger.Extra", Label("logger"), func() {
 						parallelLog.Extra(fmt.Sprintf("%d-%d", i, j), i+j)
 					}
 					parallelLog.Err(fmt.Errorf("err %d", i)).Error("Lots of extras %d", i)
+				}(i)
+			}
+		})
+		It("Contextual() Lots of extras and an error for fun", func() {
+			parallelLog := NewOCMLogger(context.Background())
+			maxExtras := int(math.Sqrt(math.Max(float64(maxChaos*maxChaos), 10000)))
+			for i := 0; i < maxChaos; i++ {
+				go func(i int) {
+					kv := []interface{}{}
+					for j := 0; j < maxExtras; j++ {
+						kv = append(kv, fmt.Sprintf("%d-%d", i, j), i+j)
+					}
+					parallelLog.Contextual().Error(fmt.Errorf("err %d", i), fmt.Sprintf("Lots of extras %d", i), kv)
 				}(i)
 			}
 		})
