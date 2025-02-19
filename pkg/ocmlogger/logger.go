@@ -273,7 +273,7 @@ func (l *logger) legacyLog(level zerolog.Level, args []any) {
 		return
 	}
 
-	l.log(level, fmt.Sprintf(messageString, args[1:]), nil, nil)
+	l.log(level, fmt.Sprintf(messageString, args[1:]...), nil, nil)
 }
 
 // Note: use the various "Depth" logging functions, so we get the correct file/line number in the logs
