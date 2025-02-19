@@ -8,6 +8,8 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"strings"
+	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -333,3 +335,36 @@ var _ = Describe("logger.Extra", Label("logger"), func() {
 		})
 	})
 })
+
+func TestLoggerNotString(t *testing.T) {
+	ulog := NewOCMLogger(context.Background())
+	output := bytes.Buffer{}
+	SetOutput(&output)
+	defer func() {
+		SetOutput(os.Stderr)
+	}()
+
+	// the cast for this call failed and panicked at one time
+	ulog.Error(fmt.Errorf("not a string"))
+	ulog.Contextual().Error(nil, "")
+}
+
+func TestLoggerMultipleArgs(t *testing.T) {
+	ulog := NewOCMLogger(context.Background())
+	output := bytes.Buffer{}
+	SetOutput(&output)
+	defer func() {
+		SetOutput(os.Stderr)
+	}()
+
+	// the cast for this call failed and panicked at one time
+	ulog.Warning("format with %s %s value", "more than one", "argument")
+	content, err := io.ReadAll(&output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contentStr := string(content)
+	if !strings.Contains(contentStr, "format with more than one argument value") {
+		t.Error(contentStr)
+	}
+}

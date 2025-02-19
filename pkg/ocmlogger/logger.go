@@ -234,69 +234,46 @@ func (l *logger) CaptureSentryEvent(capture bool) OCMLogger {
 }
 
 func (l *logger) Info(args ...any) {
-	switch len(args) {
-	case 0:
-		l.log(zerolog.InfoLevel, "", nil, nil)
-	case 1:
-		l.log(zerolog.InfoLevel, args[0].(string), nil, nil)
-	default:
-		l.log(zerolog.InfoLevel, fmt.Sprintf(args[0].(string), args[1:]), nil, nil)
-	}
+	l.legacyLog(zerolog.InfoLevel, args)
 }
 
 func (l *logger) Debug(args ...any) {
-	switch len(args) {
-	case 0:
-		l.log(zerolog.DebugLevel, "", nil, nil)
-	case 1:
-		l.log(zerolog.DebugLevel, args[0].(string), nil, nil)
-	default:
-		l.log(zerolog.DebugLevel, fmt.Sprintf(args[0].(string), args[1:]), nil, nil)
-	}
+	l.legacyLog(zerolog.DebugLevel, args)
 }
 
 func (l *logger) Trace(args ...any) {
-	switch len(args) {
-	case 0:
-		l.log(zerolog.TraceLevel, "", nil, nil)
-	case 1:
-		l.log(zerolog.TraceLevel, args[0].(string), nil, nil)
-	default:
-		l.log(zerolog.TraceLevel, fmt.Sprintf(args[0].(string), args[1:]), nil, nil)
-	}
+	l.legacyLog(zerolog.TraceLevel, args)
 }
 
 func (l *logger) Warning(args ...any) {
-	switch len(args) {
-	case 0:
-		l.log(zerolog.WarnLevel, "", nil, nil)
-	case 1:
-		l.log(zerolog.WarnLevel, args[0].(string), nil, nil)
-	default:
-		l.log(zerolog.WarnLevel, fmt.Sprintf(args[0].(string), args[1:]), nil, nil)
-	}
+	l.legacyLog(zerolog.WarnLevel, args)
 }
 
 func (l *logger) Fatal(args ...any) {
-	switch len(args) {
-	case 0:
-		l.log(zerolog.FatalLevel, "", nil, nil)
-	case 1:
-		l.log(zerolog.FatalLevel, args[0].(string), nil, nil)
-	default:
-		l.log(zerolog.FatalLevel, fmt.Sprintf(args[0].(string), args[1:]), nil, nil)
-	}
+	l.legacyLog(zerolog.FatalLevel, args)
 }
 
 func (l *logger) Error(args ...any) {
-	switch len(args) {
-	case 0:
-		l.log(zerolog.ErrorLevel, "", nil, nil)
-	case 1:
-		l.log(zerolog.ErrorLevel, args[0].(string), nil, nil)
-	default:
-		l.log(zerolog.ErrorLevel, fmt.Sprintf(args[0].(string), args[1:]), nil, nil)
+	l.legacyLog(zerolog.ErrorLevel, args)
+}
+
+func (l *logger) legacyLog(level zerolog.Level, args []any) {
+	if len(args) == 0 {
+		l.log(level, "", nil, nil)
+		return
 	}
+
+	messageString, isString := args[0].(string)
+	if !isString { // stringify if it's not actually a string
+		messageString = fmt.Sprintf("%v", args[0])
+	}
+
+	if len(args) == 1 {
+		l.log(level, messageString, nil, nil)
+		return
+	}
+
+	l.log(level, fmt.Sprintf(messageString, args[1:]...), nil, nil)
 }
 
 // Note: use the various "Depth" logging functions, so we get the correct file/line number in the logs
