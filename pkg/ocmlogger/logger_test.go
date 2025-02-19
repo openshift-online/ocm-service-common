@@ -8,6 +8,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -333,3 +334,16 @@ var _ = Describe("logger.Extra", Label("logger"), func() {
 		})
 	})
 })
+
+func TestLoggerNotString(t *testing.T) {
+	ulog := NewOCMLogger(context.Background())
+	output := bytes.Buffer{}
+	SetOutput(&output)
+	defer func() {
+		SetOutput(os.Stderr)
+	}()
+
+	// the cast for this call failed and panicked at one time
+	ulog.Error(fmt.Errorf("not a string"))
+	ulog.Contextual().Error(nil, "")
+}
