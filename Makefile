@@ -22,9 +22,9 @@ test-unit:
 ifndef JUNITFILE
 	go test -race ./...
 else
-ifeq (, $(shell which gotest2junit 2>/dev/null))
-	$(error gotest2junit not found! Get it by `go get -mod='' -u github.com/openshift/release/tools/gotest2junit`.)
+ifeq (, $(shell which gotestsum 2>/dev/null))
+	$(error gotestsum not found! Get it by `go get -mod='' -u github.com/openshift/release/tools/gotest2junit`.)
 endif
-	set -o pipefail; go test -race ./... | gotest2junit > $(JUNITFILE)
+	gotestsum --junitfile $(JUNITFILE) -- -race ./...
 endif
 .PHONY: test-unit
