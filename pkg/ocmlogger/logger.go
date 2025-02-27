@@ -1,6 +1,7 @@
 package ocmlogger
 
 import (
+	"bytes"
 	"context"
 	"crypto/md5"
 	"encoding/hex"
@@ -11,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/getsentry/sentry-go"
@@ -24,13 +26,7 @@ type OCMLogger interface {
 	// It is required for providing additional key/value pairs like the old Err and Extra functions.
 	Contextual() ContextualLogger
 
-	Err(err error) OCMLogger
-	// Extra stores a key-value pair in a map; entry with the same key will be overwritten
-	// All simple (non-struct, non-slice, non-map etc.)
-	// These values will NOT be send to sentry/glitchtip as `tags`
-	Extra(key string, value any) OCMLogger
 	AdditionalCallLevelSkips(skip int) OCMLogger
-	ClearExtras() OCMLogger
 	CaptureSentryEvent(capture bool) OCMLogger
 	Trace(args ...any)
 	Debug(args ...any)
@@ -42,15 +38,14 @@ type OCMLogger interface {
 
 var _ OCMLogger = &logger{}
 
-type extra map[string]any
 type extraCallbacks map[string]func(ctx context.Context) any
 
 type logger struct {
-	ctx                        context.Context
-	extra                      extra
-	err                        error
-	additionalCallLevelSkips   int
-	captureSentryEventOverride *bool
+	ctx                      context.Context
+	additionalCallLevelSkips atomic.Int32
+
+	captureSentrySet           atomic.Bool
+	captureSentryEventOverride atomic.Bool
 
 	// Thread Safety Note: We use a read-write lock to protect the `extra` map so that concurrent writes
 	// dont cause a panic, however, the logger is not fundamentally designed to be used concurrently as a
@@ -149,8 +144,8 @@ func init() {
 // This ensures that each thread will get its own logger
 func NewOCMLogger(ctx context.Context) OCMLogger {
 	return &logger{
-		extra: make(extra),
-		ctx:   ctx,
+		ctx:                      ctx,
+		additionalCallLevelSkips: atomic.Int32{},
 	}
 }
 
@@ -173,9 +168,15 @@ func SetOutput(output io.Writer) {
 	rootLogger = rootLogger.Output(output)
 }
 
+type ThreadSafeBytesBuffer interface {
+	io.Writer
+	io.Reader
+	String() string
+}
+
 // WrapUnsafeWriterWithLocks wraps any io.Writer with a lock during .Write to ensure guaranteed ordering.
 // Note, this does NOT mean that writes will not be interleaved since the library can choose how many bytes to write at once.
-func WrapUnsafeWriterWithLocks(writer io.Writer) io.Writer {
+func WrapUnsafeWriterWithLocks(writer *bytes.Buffer) ThreadSafeBytesBuffer {
 	return &threadSafeWriter{
 		delegate: writer,
 	}
@@ -183,14 +184,30 @@ func WrapUnsafeWriterWithLocks(writer io.Writer) io.Writer {
 
 type threadSafeWriter struct {
 	lock     sync.Mutex
-	delegate io.Writer
+	delegate *bytes.Buffer
 }
+
+var _ ThreadSafeBytesBuffer = &threadSafeWriter{}
 
 func (t *threadSafeWriter) Write(p []byte) (n int, err error) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 
 	return t.delegate.Write(p)
+}
+
+func (t *threadSafeWriter) Read(p []byte) (n int, err error) {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+
+	return t.delegate.Read(p)
+}
+
+func (t *threadSafeWriter) String() string {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+
+	return t.delegate.String()
 }
 
 var _ io.Writer = &threadSafeWriter{}
@@ -227,34 +244,21 @@ func ErrorEnabled() bool {
 	return logLevelEnabled(zerolog.ErrorLevel)
 }
 
-func (l *logger) Err(err error) OCMLogger {
-	l.err = err
-	return l
-}
-
 // AdditionalCallLevelSkips - allows to skip additional frames when logging, useful for wrapping loggers like OcmSdkLogWrapper
 func (l *logger) AdditionalCallLevelSkips(skip int) OCMLogger {
-	l.additionalCallLevelSkips = skip
-	return l
-}
-
-func (l *logger) Extra(key string, value any) OCMLogger {
-	l.lock.Lock()
-	l.extra[key] = value
-	l.lock.Unlock()
-	return l
-}
-
-func (l *logger) ClearExtras() OCMLogger {
-	l.lock.Lock()
-	l.extra = make(extra)
-	l.lock.Unlock()
+	l.additionalCallLevelSkips.Store(int32(skip))
 	return l
 }
 
 func (l *logger) CaptureSentryEvent(capture bool) OCMLogger {
-	l.captureSentryEventOverride = &capture
+	l.captureSentryEventOverride.Store(capture)
+	l.captureSentrySet.Store(true)
 	return l
+}
+
+// returns
+func (l *logger) getCaptureSentryEvent() (captureSentry bool, overridden bool) {
+	return l.captureSentryEventOverride.Load(), l.captureSentrySet.Load()
 }
 
 func (l *logger) Info(args ...any) {
@@ -302,26 +306,6 @@ func (l *logger) legacyLog(level zerolog.Level, args []any) {
 
 // Note: use the various "Depth" logging functions, so we get the correct file/line number in the logs
 func (l *logger) log(level zerolog.Level, message string, err error, keysAndValues []interface{}) {
-
-	defer func() {
-		l.Err(nil)
-		l.ClearExtras()
-	}()
-
-	// TODO provided only for a controlled migration to non-racy code.
-	if len(keysAndValues) == 0 {
-		l.lock.Lock()
-		for k, v := range l.extra {
-			keysAndValues = append(keysAndValues, k, v)
-		}
-		l.lock.Unlock()
-	}
-
-	// TODO provided only for a controlled migration to non-racy code.
-	if err == nil && l.err != nil {
-		err = l.err
-	}
-
 	if message == "" && err != nil {
 		message = err.Error()
 	}
@@ -330,8 +314,8 @@ func (l *logger) log(level zerolog.Level, message string, err error, keysAndValu
 	captureSentry := level == zerolog.ErrorLevel || level == zerolog.FatalLevel
 
 	// if caller explicitly overrides the captureSentryEvent, use that instead
-	if l.captureSentryEventOverride != nil {
-		captureSentry = *l.captureSentryEventOverride
+	if captureSentryOverride, overridden := l.getCaptureSentryEvent(); overridden {
+		captureSentry = captureSentryOverride
 	}
 
 	// make sure we have all the extras from the context before trying to capture the sentry event
@@ -345,11 +329,12 @@ func (l *logger) log(level zerolog.Level, message string, err error, keysAndValu
 	}
 
 	event := l.createLogEvent(level, err, keysAndValues)
-
-	if event.Enabled() {
-		event.Msg(message)
-		event.Discard()
-	}
+	// once an zerolog event is created, it is imperative that we call .Msg on it so that the event will be returned to the pool.
+	// if we don't do this, we leak from the pool which continues to grow.
+	// After calling .Msg, it is imperative that we do not call any additional methods on event because the pool is reused
+	// and this can cause data races in the library.
+	// if we ever move off zerolog, this likely requires consideration.
+	event.Msg(message)
 
 	if level == zerolog.FatalLevel {
 		os.Exit(1)
@@ -374,7 +359,7 @@ func (l *logger) tryCaptureSentryEvent(level zerolog.Level, message string, err 
 
 			// remove the frames that are not relevant to the caller
 			// last frame of the stacktrace should be the line where the user called ulog.Error(...)
-			framesToKeep := len(sentryStack.Frames) - baseCallerSkipLevel - l.additionalCallLevelSkips
+			framesToKeep := len(sentryStack.Frames) - baseCallerSkipLevel - int(l.additionalCallLevelSkips.Load())
 			sentryStack.Frames = sentryStack.Frames[:framesToKeep]
 		}
 
@@ -399,15 +384,6 @@ func (l *logger) tryCaptureSentryEvent(level zerolog.Level, message string, err 
 		return nil
 	}
 	return sentryHub.CaptureEvent(event)
-}
-
-func (l *logger) populateExtrasFromContext() {
-	for k, callback := range retrieveExtraFromContextCallbacks {
-		if callback != nil {
-			v := callback(l.ctx)
-			l.Extra(k, v)
-		}
-	}
 }
 
 func extrasFromContext(ctx context.Context) []interface{} {
@@ -462,7 +438,7 @@ func contextToLegacyExtra(keysAndValues []interface{}) map[string]interface{} {
 
 func (l *logger) createLogEvent(level zerolog.Level, err error, extraKeysAndValues []interface{}) *zerolog.Event {
 	event := rootLogger.WithLevel(level).
-		Caller(baseCallerSkipLevel + l.additionalCallLevelSkips).
+		Caller(baseCallerSkipLevel + int(l.additionalCallLevelSkips.Load())).
 		Err(err)
 
 	if len(extraKeysAndValues) > 0 {
