@@ -99,7 +99,7 @@ var _ = Describe("OCMLogger Sentry Integration", Label("logger"), func() {
 			err := fmt.Errorf("This kind of error does not generate a stacktrace")
 
 			ulog.Contextual().Error(err, "ERROR")
-			expectedLineNumber := 100 // ^^^
+			expectedLineNumber := 101 // ^^^
 			Expect(sentryTransport.lastEvent).NotTo(BeNil())
 			Expect(sentryTransport.lastEvent.Exception).To(HaveLen(1))
 			Expect(sentryTransport.lastEvent.Exception[0].Stacktrace).NotTo(BeNil())
