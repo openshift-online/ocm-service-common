@@ -18,13 +18,13 @@ import (
 var _ = Describe("logger.Extra", Label("logger"), func() {
 	var (
 		ulog   OCMLogger
-		output bytes.Buffer
+		output ThreadSafeBytesBuffer
 	)
 
 	BeforeEach(func() {
 		ulog = NewOCMLogger(context.Background())
-		output = bytes.Buffer{}
-		SetOutput(WrapUnsafeWriterWithLocks(&output))
+		output = WrapUnsafeWriterWithLocks(&bytes.Buffer{})
+		SetOutput(output)
 		DeferCleanup(func() {
 			SetOutput(os.Stderr)
 		})
@@ -62,7 +62,7 @@ var _ = Describe("logger.Extra", Label("logger"), func() {
 				"float64", 64.01,
 			)
 
-			resultBytes, err := io.ReadAll(&output)
+			resultBytes, err := io.ReadAll(output)
 			Expect(err).NotTo(HaveOccurred())
 			result := string(resultBytes)
 

@@ -17,15 +17,15 @@ import (
 var _ = Describe("OCMLogger Sentry Integration", Label("logger"), func() {
 	var (
 		ulog            OCMLogger
-		output          bytes.Buffer
+		output          ThreadSafeBytesBuffer
 		sentryTransport *TransportMock
 		sentryClient    *sentry.Client
 		ctx             context.Context
 	)
 
 	BeforeEach(func() {
-		output = bytes.Buffer{}
-		SetOutput(WrapUnsafeWriterWithLocks(&output))
+		output = WrapUnsafeWriterWithLocks(&bytes.Buffer{})
+		SetOutput(output)
 		DeferCleanup(func() {
 			sentryTransport.Flush(0)
 			SetOutput(os.Stderr)
