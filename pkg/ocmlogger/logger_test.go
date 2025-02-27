@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"os"
 	"strings"
@@ -190,6 +189,16 @@ var _ = Describe("logger.Extra", Label("logger"), func() {
 			Expect(result).NotTo(ContainSubstring("\"Extra\""))
 		})
 	})
+})
+
+var _ = Describe("logger chaos", Label("logger"), func() {
+
+	BeforeEach(func() {
+		SetOutput(io.Discard)
+		DeferCleanup(func() {
+			SetOutput(os.Stderr)
+		})
+	})
 
 	Context("Chaos", func() {
 		// Notes:
@@ -240,7 +249,7 @@ var _ = Describe("logger.Extra", Label("logger"), func() {
 		})
 		It("Contextual() Lots of extras and an error for fun", func() {
 			parallelLog := NewOCMLogger(context.Background())
-			maxExtras := int(math.Sqrt(math.Max(float64(maxChaos*maxChaos), 10000)))
+			maxExtras := 100
 
 			waitForTestEnd := sync.WaitGroup{}
 			for i := 0; i < maxChaos; i++ {
