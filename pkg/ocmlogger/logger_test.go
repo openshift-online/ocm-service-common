@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -199,33 +200,54 @@ var _ = Describe("logger.Extra", Label("logger"), func() {
 		maxChaos := 10000
 		It("AdditionalCallLevelSkips() is thread safe", func() {
 			parallelLog := NewOCMLogger(context.Background())
+
+			waitForTestEnd := sync.WaitGroup{}
 			for i := 0; i < maxChaos; i++ {
+				waitForTestEnd.Add(1)
 				go func(i int) {
+					defer waitForTestEnd.Done()
 					parallelLog.AdditionalCallLevelSkips(0).Info("AdditionalCallLevelSkips() %d", i)
 				}(i)
 			}
+			waitForTestEnd.Wait()
 		})
 		It("CaptureSentryEvent() is thread safe", func() {
 			parallelLog := NewOCMLogger(context.Background())
+
+			waitForTestEnd := sync.WaitGroup{}
 			for i := 0; i < maxChaos; i++ {
+				waitForTestEnd.Add(1)
 				go func(i int) {
+					defer waitForTestEnd.Done()
 					parallelLog.CaptureSentryEvent(false).Info("CaptureSentryEvent() %d", i)
 				}(i)
 			}
+			waitForTestEnd.Wait()
 		})
 		It("Contextual().Error() is thread safe", func() {
 			parallelLog := NewOCMLogger(context.Background())
+
+			waitForTestEnd := sync.WaitGroup{}
 			for i := 0; i < maxChaos; i++ {
+				waitForTestEnd.Add(1)
 				go func(i int) {
+					defer waitForTestEnd.Done()
+
 					parallelLog.Contextual().Error(fmt.Errorf("err %d", i), fmt.Sprintf("Err() %d", i))
 				}(i)
 			}
+			waitForTestEnd.Wait()
 		})
 		It("Contextual() Lots of extras and an error for fun", func() {
 			parallelLog := NewOCMLogger(context.Background())
 			maxExtras := int(math.Sqrt(math.Max(float64(maxChaos*maxChaos), 10000)))
+
+			waitForTestEnd := sync.WaitGroup{}
 			for i := 0; i < maxChaos; i++ {
+				waitForTestEnd.Add(1)
 				go func(i int) {
+					defer waitForTestEnd.Done()
+
 					kv := []interface{}{}
 					for j := 0; j < maxExtras; j++ {
 						kv = append(kv, fmt.Sprintf("%d-%d", i, j), i+j)
@@ -233,6 +255,7 @@ var _ = Describe("logger.Extra", Label("logger"), func() {
 					parallelLog.Contextual().Error(fmt.Errorf("err %d", i), fmt.Sprintf("Lots of extras %d", i), kv)
 				}(i)
 			}
+			waitForTestEnd.Wait()
 		})
 	})
 })

@@ -329,11 +329,12 @@ func (l *logger) log(level zerolog.Level, message string, err error, keysAndValu
 	}
 
 	event := l.createLogEvent(level, err, keysAndValues)
-
-	if event.Enabled() {
-		event.Msg(message)
-		event.Discard()
-	}
+	// once an zerolog event is created, it is imperative that we call .Msg on it so that the event will be returned to the pool.
+	// if we don't do this, we leak from the pool which continues to grow.
+	// After calling .Msg, it is imperative that we do not call any additional methods on event because the pool is reused
+	// and this can cause data races in the library.
+	// if we ever move off zerolog, this likely requires consideration.
+	event.Msg(message)
 
 	if level == zerolog.FatalLevel {
 		os.Exit(1)
