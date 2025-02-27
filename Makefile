@@ -20,7 +20,7 @@ test:
 .PHONY: test-unit
 test-unit:
 ifndef JUNITFILE
-	go test -- -race ./...
+	go test -race ./...
 else
 ifeq (, $(shell which gotestsum 2>/dev/null))
 	$(error gotestsum not found! Get it by `go get -mod='' -u github.com/openshift/release/tools/gotest2junit`.)
