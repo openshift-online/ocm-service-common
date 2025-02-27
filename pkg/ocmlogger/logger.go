@@ -24,13 +24,7 @@ type OCMLogger interface {
 	// It is required for providing additional key/value pairs like the old Err and Extra functions.
 	Contextual() ContextualLogger
 
-	Err(err error) OCMLogger
-	// Extra stores a key-value pair in a map; entry with the same key will be overwritten
-	// All simple (non-struct, non-slice, non-map etc.)
-	// These values will NOT be send to sentry/glitchtip as `tags`
-	Extra(key string, value any) OCMLogger
 	AdditionalCallLevelSkips(skip int) OCMLogger
-	ClearExtras() OCMLogger
 	CaptureSentryEvent(capture bool) OCMLogger
 	Trace(args ...any)
 	Debug(args ...any)
@@ -42,13 +36,10 @@ type OCMLogger interface {
 
 var _ OCMLogger = &logger{}
 
-type extra map[string]any
 type extraCallbacks map[string]func(ctx context.Context) any
 
 type logger struct {
 	ctx                        context.Context
-	extra                      extra
-	err                        error
 	additionalCallLevelSkips   int
 	captureSentryEventOverride *bool
 
@@ -149,8 +140,7 @@ func init() {
 // This ensures that each thread will get its own logger
 func NewOCMLogger(ctx context.Context) OCMLogger {
 	return &logger{
-		extra: make(extra),
-		ctx:   ctx,
+		ctx: ctx,
 	}
 }
 
@@ -227,28 +217,9 @@ func ErrorEnabled() bool {
 	return logLevelEnabled(zerolog.ErrorLevel)
 }
 
-func (l *logger) Err(err error) OCMLogger {
-	l.err = err
-	return l
-}
-
 // AdditionalCallLevelSkips - allows to skip additional frames when logging, useful for wrapping loggers like OcmSdkLogWrapper
 func (l *logger) AdditionalCallLevelSkips(skip int) OCMLogger {
 	l.additionalCallLevelSkips = skip
-	return l
-}
-
-func (l *logger) Extra(key string, value any) OCMLogger {
-	l.lock.Lock()
-	l.extra[key] = value
-	l.lock.Unlock()
-	return l
-}
-
-func (l *logger) ClearExtras() OCMLogger {
-	l.lock.Lock()
-	l.extra = make(extra)
-	l.lock.Unlock()
 	return l
 }
 
@@ -302,26 +273,6 @@ func (l *logger) legacyLog(level zerolog.Level, args []any) {
 
 // Note: use the various "Depth" logging functions, so we get the correct file/line number in the logs
 func (l *logger) log(level zerolog.Level, message string, err error, keysAndValues []interface{}) {
-
-	defer func() {
-		l.Err(nil)
-		l.ClearExtras()
-	}()
-
-	// TODO provided only for a controlled migration to non-racy code.
-	if len(keysAndValues) == 0 {
-		l.lock.Lock()
-		for k, v := range l.extra {
-			keysAndValues = append(keysAndValues, k, v)
-		}
-		l.lock.Unlock()
-	}
-
-	// TODO provided only for a controlled migration to non-racy code.
-	if err == nil && l.err != nil {
-		err = l.err
-	}
-
 	if message == "" && err != nil {
 		message = err.Error()
 	}
@@ -399,15 +350,6 @@ func (l *logger) tryCaptureSentryEvent(level zerolog.Level, message string, err 
 		return nil
 	}
 	return sentryHub.CaptureEvent(event)
-}
-
-func (l *logger) populateExtrasFromContext() {
-	for k, callback := range retrieveExtraFromContextCallbacks {
-		if callback != nil {
-			v := callback(l.ctx)
-			l.Extra(k, v)
-		}
-	}
 }
 
 func extrasFromContext(ctx context.Context) []interface{} {

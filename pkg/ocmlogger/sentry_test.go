@@ -81,7 +81,7 @@ var _ = Describe("OCMLogger Sentry Integration", Label("logger"), func() {
 			err := errors.New("github.com/pkg/errors have stacktraces")
 			expectedLineNumber := 81 // ^^^
 
-			ulog.Err(err).Error("ERROR")
+			ulog.Contextual().Error(err, "ERROR")
 
 			Expect(sentryTransport.lastEvent).NotTo(BeNil())
 			Expect(sentryTransport.lastEvent.Exception).To(HaveLen(1))
@@ -98,7 +98,7 @@ var _ = Describe("OCMLogger Sentry Integration", Label("logger"), func() {
 		It("generates a new stacktrace", func() {
 			err := fmt.Errorf("This kind of error does not generate a stacktrace")
 
-			ulog.Err(err).Error("ERROR")
+			ulog.Contextual().Error(err, "ERROR")
 			expectedLineNumber := 100 // ^^^
 			Expect(sentryTransport.lastEvent).NotTo(BeNil())
 			Expect(sentryTransport.lastEvent.Exception).To(HaveLen(1))
