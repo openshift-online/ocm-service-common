@@ -11,17 +11,12 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/openshift-online/async-routine/opid"
 	sdklogging "github.com/openshift-online/ocm-sdk-go/logging"
 )
 
 // ContextKey is the type of keys used to store operation identifiers in contexts.
 type ContextKey int
-
-const (
-	// opidKey is the key used to store operation identifiers in context
-	opidKey ContextKey = iota
-)
 
 // TransportWrapperBuilder contains the data and logic needed to create logging transport wrappers.
 type TransportWrapperBuilder struct {
@@ -107,10 +102,7 @@ func (r *roundTripper) RoundTrip(request *http.Request) (response *http.Response
 	// Ensure that the context has an operation identifier attached, as otherwise it is
 	// difficult to associate the log messages containing the details of a request with the log
 	// message containing the details for the response.
-	ctx, err = WithOpID(ctx)
-	if err != nil {
-		return
-	}
+	ctx = opid.WithOpId(ctx)
 	request = request.WithContext(ctx)
 
 	// Write the request details to the log:
@@ -147,14 +139,6 @@ func (r *roundTripper) RoundTrip(request *http.Request) (response *http.Response
 	}
 
 	return
-}
-
-func WithOpID(ctx context.Context) (context.Context, error) {
-	if ctx.Value(opidKey) != nil {
-		return ctx, nil
-	}
-	opID := uuid.NewString()
-	return context.WithValue(ctx, opidKey, opID), nil
 }
 
 // Read is part of the implementation of the io.ReadCloser interface.
