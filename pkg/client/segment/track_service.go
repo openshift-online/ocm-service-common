@@ -8,7 +8,7 @@ import (
 
 	"github.com/segmentio/analytics-go/v3"
 
-	logger "gitlab.cee.redhat.com/service/ocm-common/pkg/ocmlogger"
+	logger "github.com/openshift-online/ocm-service-common/pkg/ocmlogger"
 )
 
 type Service interface {

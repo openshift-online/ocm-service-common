@@ -91,7 +91,7 @@ var _ = Describe("OCMLogger Sentry Integration", Label("logger"), func() {
 			lastFrame := stacktrace.Frames[len(stacktrace.Frames)-1]
 
 			//Any file modification risks breaking this test, I dont love it, but I cant think of a better way
-			Expect(lastFrame.AbsPath).To(ContainSubstring("ocm-common/pkg/ocmlogger/sentry_test.go"))
+			Expect(lastFrame.AbsPath).To(ContainSubstring("ocm-service-common/pkg/ocmlogger/sentry_test.go"))
 			Expect(lastFrame.Lineno).To(Equal(expectedLineNumber))
 		})
 
@@ -99,7 +99,7 @@ var _ = Describe("OCMLogger Sentry Integration", Label("logger"), func() {
 			err := fmt.Errorf("This kind of error does not generate a stacktrace")
 
 			ulog.Contextual().Error(err, "ERROR")
-			expectedLineNumber := 100 // ^^^
+			expectedLineNumber := 101 // ^^^
 			Expect(sentryTransport.lastEvent).NotTo(BeNil())
 			Expect(sentryTransport.lastEvent.Exception).To(HaveLen(1))
 			Expect(sentryTransport.lastEvent.Exception[0].Stacktrace).NotTo(BeNil())
@@ -108,7 +108,7 @@ var _ = Describe("OCMLogger Sentry Integration", Label("logger"), func() {
 			lastFrame := stacktrace.Frames[len(stacktrace.Frames)-1]
 
 			//Any file modification risks breaking this test, I dont love it, but I cant think of a better way
-			Expect(lastFrame.AbsPath).To(ContainSubstring("ocm-common/pkg/ocmlogger/sentry_test.go"))
+			Expect(lastFrame.AbsPath).To(ContainSubstring("ocm-service-common/pkg/ocmlogger/sentry_test.go"))
 			Expect(lastFrame.Lineno).To(Equal(expectedLineNumber))
 		})
 	})

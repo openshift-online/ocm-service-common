@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"gitlab.cee.redhat.com/service/ocm-common/pkg/api"
+	"github.com/openshift-online/ocm-service-common/pkg/api"
 )
 
 func ParseCloudResource(csv []string) *api.CloudResource {

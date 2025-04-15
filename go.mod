@@ -1,4 +1,4 @@
-module gitlab.cee.redhat.com/service/ocm-common
+module github.com/openshift-online/ocm-service-common
 
 go 1.22.5
 

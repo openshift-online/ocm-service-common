@@ -5,7 +5,7 @@ import (
 
 	// nolint
 	. "github.com/onsi/ginkgo/v2"
-	"gitlab.cee.redhat.com/service/ocm-common/pkg/api"
+	"github.com/openshift-online/ocm-service-common/pkg/api"
 
 	// nolint
 	. "github.com/onsi/gomega"
