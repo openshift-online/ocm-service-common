@@ -3,6 +3,7 @@ package jira
 import (
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/andygrunwald/go-jira"
 	errors "github.com/zgalor/weberr"
@@ -197,6 +198,9 @@ func (c *Client) GetAllIssues(searchString string, maxResults int) ([]jira.Issue
 
 		chunk, resp, err := c.jiraClient.Issue.Search(searchString, opt)
 		if err != nil {
+			if isRateLimitError(err) {
+				return nil, errors.TooManyRequests.Wrapf(err, "Rate limit exceeded to search issues")
+			}
 			return nil, err
 		}
 
@@ -207,4 +211,9 @@ func (c *Client) GetAllIssues(searchString string, maxResults int) ([]jira.Issue
 			return issues, nil
 		}
 	}
+}
+
+func isRateLimitError(err error) bool {
+	return strings.Contains(err.Error(), "HTTP Status 429 – Too Many Requests") ||
+		strings.Contains(err.Error(), "429 Too Many Requests")
 }
