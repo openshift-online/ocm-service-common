@@ -83,8 +83,17 @@ func (rp *RegionProxy) Handler(next http.Handler) http.Handler {
 		if dispatchHost != "" {
 			rp.Logger.Info(ctx, "Dispatch the request %s to %s", r.URL, dispatchHost)
 			requestsDispatched.Inc()
-			r.Host = dispatchHost
-			dispatchURL, _ := url.Parse(fmt.Sprintf("https://%s", dispatchHost))
+			dispatchURL, err := url.Parse(dispatchHost)
+			if err != nil {
+				rp.ErrorHandler(w, r, err)
+				return
+			}
+			if dispatchURL.Scheme == "" {
+				dispatchURL = &url.URL{
+					Host:   dispatchHost,
+					Scheme: "https"}
+			}
+			r.Host = dispatchURL.Host
 			proxy := httputil.NewSingleHostReverseProxy(dispatchURL)
 			proxy.ServeHTTP(w, r)
 		} else {

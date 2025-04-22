@@ -20,11 +20,14 @@ func TestRequestDispatch(t *testing.T) {
 		Expect(r.Method).To(Equal(http.MethodGet))
 	})
 
+	mockRegionalServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	}))
+
 	middleware := NewRegionProxy(
 		context.Background(),
 		WithGetDispatchHostFunc(func(ctx context.Context, logger logging.Logger,
 			r *http.Request, connection *sdk.Connection) (string, error) {
-			return "api.test.openshift.com", nil
+			return mockRegionalServer.URL, nil
 		}),
 	)
 
@@ -33,7 +36,7 @@ func TestRequestDispatch(t *testing.T) {
 	recorder := httptest.NewRecorder()
 
 	router.ServeHTTP(recorder, request)
-	Expect(recorder.Code).To(Equal(http.StatusBadGateway))
+	Expect(recorder.Code).To(Equal(http.StatusOK))
 }
 
 func TestRequestNotDispatch(t *testing.T) {
@@ -71,6 +74,29 @@ func TestErrorInGetDispatchHostFunc(t *testing.T) {
 		WithGetDispatchHostFunc(func(ctx context.Context, logger logging.Logger,
 			r *http.Request, connection *sdk.Connection) (string, error) {
 			return "", fmt.Errorf("errors")
+		}),
+	)
+
+	router := middleware.Handler(nextHandler)
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, request)
+	Expect(recorder.Code).To(Equal(http.StatusInternalServerError))
+}
+
+func TestErrorInvalidDispatchHost(t *testing.T) {
+	RegisterTestingT(t)
+
+	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		Expect(r.Method).To(Equal(http.MethodGet))
+	})
+
+	middleware := NewRegionProxy(
+		context.Background(),
+		WithGetDispatchHostFunc(func(ctx context.Context, logger logging.Logger,
+			r *http.Request, connection *sdk.Connection) (string, error) {
+			return ":api.test.openshift.com", nil
 		}),
 	)
 
