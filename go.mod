@@ -7,14 +7,15 @@ require (
 	github.com/cenkalti/backoff/v4 v4.1.3
 	github.com/getkin/kin-openapi v0.115.0
 	github.com/getsentry/sentry-go v0.23.0
-	github.com/golang-jwt/jwt/v4 v4.4.2
+	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/golang/glog v1.0.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.0
+	github.com/hashicorp/golang-lru/v2 v2.0.7 
 	github.com/onsi/ginkgo/v2 v2.22.2
 	github.com/onsi/gomega v1.36.2
 	github.com/openshift-online/async-routine v0.0.0-20250316103614-80821a56d9d1
-	github.com/openshift-online/ocm-sdk-go v0.1.460
+	github.com/openshift-online/ocm-sdk-go v0.1.465
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.21.1
 	github.com/rs/zerolog v1.30.0
