@@ -515,7 +515,7 @@ func (t *TokenScopeValidationMiddlewareImpl) isFeatureEnabled(ctx context.Contex
 	}
 	authorizations := t.Connection.Authorizations().V1()
 
-	builder := authv1.FeatureReviewRequestBuilder{}
+	builder := authv1.NewFeatureReviewRequest()
 	request, err := builder.Feature(featureName).Build()
 	if err != nil {
 		return false, err
