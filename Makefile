@@ -14,7 +14,7 @@ endif
 export ACK_GINKGO_DEPRECATIONS = 2.7.0
 .PHONY: test
 test:
-	ginkgo $(ginkgo_flags) -r pkg/client/jira pkg/ocmlogger
+	ginkgo $(ginkgo_flags) -r ./...
 
 
 .PHONY: test-unit
