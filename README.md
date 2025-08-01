@@ -9,7 +9,20 @@ and then import the `github.com/openshift-online/ocm-service-common` package.
 
 ## How To Release
 
-1. Merge any PRs to master
-2. go to https://gitlab.cee.redhat.com/service/ocm-common/-/releases/new
-3. select an existing or create a new version tag, e.g. v0.0.78
-4. generate release notes from the last version tag: `git log --no-merges --oneline --pretty=format:'%h%x09%an%x09%ad%x09%s' v0.0.77..HEAD`
+Use the Makefile `release` target to create and push a new version tag:
+
+```shell
+git checkout master
+git pull
+make release VERSION=v0.1.39
+```
+
+The `make release` target will:
+
+- Validate that you're on the `master` branch
+- Check that the version follows semantic versioning format (vX.Y.Z)
+- Ensure the new version is higher than the latest existing tag
+- Create an annotated tag with a proper release message
+- Push the tag to the `upstream` remote
+
+Note that a repository administrator may need to push the tag to the repository due to access restrictions.
