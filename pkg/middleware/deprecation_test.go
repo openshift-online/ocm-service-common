@@ -10,6 +10,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/openshift-online/ocm-common/pkg/ocm/consts"
+	"github.com/openshift-online/ocm-service-common/pkg/error"
 )
 
 var _ = Describe("Deprecation Middleware", func() {
@@ -77,13 +78,13 @@ var _ = Describe("Deprecation Middleware", func() {
 				},
 			}
 
-			var sentError *Error
+			var sentError *error.Error
 			var createErrorCalled bool
 			cfg := MiddlewareConfig{
 				Endpoints: deprecatedEndpoints,
-				CreateError: func(r *http.Request, format string, a any) Error {
+				CreateError: func(r *http.Request, format string, a any) error.Error {
 					createErrorCalled = true
-					return Error{
+					return error.Error{
 						ID:   "410",
 						Code: "CLUSTERS-MGMT-410",
 						Reason: fmt.Sprintf(
@@ -92,7 +93,7 @@ var _ = Describe("Deprecation Middleware", func() {
 						Timestamp: time.Now().UTC(),
 					}
 				},
-				SendError: func(w http.ResponseWriter, r *http.Request, err *Error) {
+				SendError: func(w http.ResponseWriter, r *http.Request, err *error.Error) {
 					sentError = err
 					status, conversionErr := strconv.Atoi(err.ID)
 					Expect(conversionErr).ToNot(HaveOccurred())

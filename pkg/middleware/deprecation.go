@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/openshift-online/ocm-common/pkg/ocm/consts"
+	"github.com/openshift-online/ocm-service-common/pkg/error"
 )
 
 // DeprecatedEndpoint represents a deprecated API endpoint with its message and sunset date.
@@ -16,8 +17,8 @@ type DeprecatedEndpoint struct {
 
 type MiddlewareConfig struct {
 	Endpoints   map[string]DeprecatedEndpoint
-	CreateError ErrorFactory
-	SendError   SendErrorFunc
+	CreateError error.ErrorFactory
+	SendError   error.SendErrorFunc
 }
 
 // NewDeprecationMiddleware creates an HTTP middleware that adds deprecation headers
