@@ -40,6 +40,7 @@ This is a Go shared library (`ocm-common`) providing common utilities and middle
 - `pkg/middleware/region_proxy.go` - Region-aware request proxying with Prometheus metrics
 - `pkg/middleware/standard_claims.go` - JWT claims processing
 - `pkg/middleware/token.go` - Token validation middleware
+- `pkg/middleware/deprecation.go` - Deprecation warning middleware for API versioning
 - `pkg/logging/transport.go` - HTTP transport logging wrappers
 
 **Logging System**:
@@ -49,7 +50,7 @@ This is a Go shared library (`ocm-common`) providing common utilities and middle
 - SDK log wrapper for third-party library integration
 
 **Utilities**:
-- `pkg/test/` - Test framework and helpers for continuous testing
+- `pkg/test/` - OCM API testing framework with concurrent test execution, label-based filtering, and continuous monitoring capabilities
 - `pkg/csv/` - CSV parsing utilities
 - `pkg/grafana/` - Grafana dashboard generation
 - `utils/retry.go` - Retry logic utilities
@@ -71,6 +72,39 @@ Uses GitLab module path: `gitlab.cee.redhat.com/service/ocm-common`
 - Race condition detection enabled
 - Mock implementations for external services (HTTP, notifications, segment)
 - Continuous testing framework in `pkg/test/`
+
+### Test Framework (`pkg/test/`)
+The test package provides a comprehensive framework for OCM API testing with these key capabilities:
+
+**Core Components**:
+- `TestSuite` - Main test orchestrator with OCM SDK connection management
+- `TestCase` - Individual test definition with setup/teardown hooks and response assertions
+- `TestConfig` - Configuration for test execution (sample count, label filtering)
+- `Result` - Test execution results with timing, error, and response size metrics
+
+**Key Features**:
+- **Concurrent Execution**: Tests run in parallel goroutines with configurable sample counts
+- **Label-based Filtering**: Organize and run tests by labels (e.g., "performance", "regression")
+- **OCM SDK Integration**: Direct connection to OCM API environments (stage, prod, integration)
+- **Response Assertions**: Chainable assertions for validating API responses
+- **Continuous Testing**: Long-running test execution with real-time result streaming
+- **Environment Abstraction**: Supports multiple OCM environments with account ID mapping
+- **Metrics Collection**: Latency, response size, and error rate tracking
+- **Setup/Teardown**: Per-test lifecycle hooks for resource management
+
+**Authentication Support**:
+- OAuth token-based authentication
+- Client ID/secret authentication
+- Environment variable configuration (`UHC_TOKEN`, `AMS_CLIENT_ID`, `AMS_CLIENT_SECRET`)
+
+**Usage Pattern**:
+```go
+suite := BuildTestSuite(&TestSuiteSpec{
+    BaseURL: "https://api.stage.openshift.com",
+    SdkConnector: &sdkConnector{},
+})
+results := suite.Run(&TestConfig{SampleCount: 10, Labels: ["performance"]})
+```
 
 ### Logging Best Practices
 - Use `ocmlogger.NewOCMLogger(context.Background())` for structured logging
