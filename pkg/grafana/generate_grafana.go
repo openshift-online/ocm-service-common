@@ -94,7 +94,7 @@ func GenerateGrafana(configFile string, outputFile string) {
 			logErrorAndExit(err)
 			err = doc.Validate(loader.Context)
 			logErrorAndExit(err)
-			paths := keys(doc.Paths)
+			paths := keys(doc.Paths.Map())
 			sort.StringSlice(paths).Sort()
 			skipSA := false
 			if config.Grafana.SkipServiceAccount != nil {
