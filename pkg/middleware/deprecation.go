@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/openshift-online/ocm-common/pkg/deprecation"
 	"github.com/openshift-online/ocm-common/pkg/ocm/consts"
 	"github.com/openshift-online/ocm-service-common/pkg/error"
 )
@@ -16,9 +17,10 @@ type DeprecatedEndpoint struct {
 }
 
 type MiddlewareConfig struct {
-	Endpoints   map[string]DeprecatedEndpoint
-	CreateError error.ErrorFactory
-	SendError   error.SendErrorFunc
+	Endpoints              map[string]DeprecatedEndpoint
+	CreateError            error.ErrorFactory
+	SendError              error.SendErrorFunc
+	EnableFieldDeprecation bool
 }
 
 // NewDeprecationMiddleware creates an HTTP middleware that adds deprecation headers
@@ -43,6 +45,20 @@ func NewDeprecationMiddleware(cfg MiddlewareConfig) func(http.Handler) http.Hand
 				w.Header().Set(consts.DeprecationHeader, deprecatedEndpoint.SunsetDate.Format(time.RFC3339))
 				w.Header().Set(consts.OcmDeprecationMessage, deprecatedEndpoint.Message)
 			}
+
+			if cfg.EnableFieldDeprecation {
+				ctx := r.Context()
+				ctx = deprecation.WithFieldDeprecations(ctx)
+
+				wrappedWriter := &deprecation.FieldDeprecationResponseWriter{
+					ResponseWriter: w,
+					Request:        r.WithContext(ctx),
+				}
+
+				next.ServeHTTP(wrappedWriter, r.WithContext(ctx))
+				return
+			}
+
 			// Call the next handler
 			next.ServeHTTP(w, r)
 		})
