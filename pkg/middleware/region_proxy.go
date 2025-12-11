@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/golang-lru/v2/expirable"
 	sdk "github.com/openshift-online/ocm-sdk-go"
 	"github.com/openshift-online/ocm-sdk-go/logging"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -152,6 +153,17 @@ func defaultDispatchHandler() dispatchHandlerFunc {
 			}
 			r.Host = dispatchURL.Host
 			proxy := httputil.NewSingleHostReverseProxy(dispatchURL)
+			defer func() {
+				if p := recover(); p != nil {
+					if err, ok := p.(error); ok {
+						if errors.Is(err, http.ErrAbortHandler) {
+							logger.Warn(ctx, "Client aborted request, ignoring error.")
+							return
+						}
+					}
+					panic(p)
+				}
+			}()
 			proxy.ServeHTTP(w, r)
 		} else {
 			next.ServeHTTP(w, r)
