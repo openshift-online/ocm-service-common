@@ -166,7 +166,7 @@ func (t *TokenScopeValidationMiddlewareImpl) ValidateScopes(ctx context.Context)
 		return nil
 	}
 
-	claims, err := tokenClaimsFromContext(ctx)
+	claims, err := TokenClaimsFromContext(ctx)
 	if !t.ErrorOnMissingToken && errors.Is(err, ErrMissingToken) {
 		// We did not find a token, and it was not due to bad token context
 		return nil
@@ -175,7 +175,7 @@ func (t *TokenScopeValidationMiddlewareImpl) ValidateScopes(ctx context.Context)
 		return fmt.Errorf("failed to get token claims: %w", err)
 	}
 
-	if isServiceAccount(claims) && !t.EnforceServiceAccountScopes {
+	if IsServiceAccount(claims) && !t.EnforceServiceAccountScopes {
 		return nil
 	}
 
@@ -236,7 +236,7 @@ func (t *TokenScopeValidationMiddlewareImpl) ValidateOfflineAccessByOrg(ctx cont
 		return nil
 	}
 
-	claims, err := tokenClaimsFromContext(ctx)
+	claims, err := TokenClaimsFromContext(ctx)
 	if !t.ErrorOnMissingToken && errors.Is(err, ErrMissingToken) {
 		// We did not find a token, and it was not due to an error
 		return nil
@@ -245,7 +245,7 @@ func (t *TokenScopeValidationMiddlewareImpl) ValidateOfflineAccessByOrg(ctx cont
 		return err
 	}
 
-	if isServiceAccount(claims) {
+	if IsServiceAccount(claims) {
 		// Service accounts do not have offline access
 		return nil
 	}
@@ -262,6 +262,19 @@ func (t *TokenScopeValidationMiddlewareImpl) ValidateOfflineAccessByOrg(ctx cont
 	}
 
 	// Grab organization ID from token, with fallback for the access scope claim
+	orgID, _, err := GetOrgIdFromClaims(claims)
+	if err != nil {
+		return err
+	}
+
+	if t.isOrgRestrictedSafe(orgID) {
+		return fmt.Errorf("offline access is restricted for organization %s", orgID)
+	}
+
+	return nil
+}
+
+func GetOrgIdFromClaims(claims jwt.MapClaims) (string, bool, error) {
 	orgID, ok := claims[ClaimOrgId].(string)
 	if !ok {
 		orgClaim := claims[ClaimOrganization]
@@ -271,17 +284,14 @@ func (t *TokenScopeValidationMiddlewareImpl) ValidateOfflineAccessByOrg(ctx cont
 			if ok {
 				orgID, ok = orgClaimMap[ClaimId].(string)
 				if !ok {
-					return fmt.Errorf("failed to get organization id from token")
+					return "", ok, fmt.Errorf("failed to get organization id from token")
 				}
+
+				return orgID, ok, nil
 			}
 		}
 	}
-
-	if t.isOrgRestrictedSafe(orgID) {
-		return fmt.Errorf("offline access is restricted for organization %s", orgID)
-	}
-
-	return nil
+	return orgID, ok, nil
 }
 
 // Immediately populates the offline restricted orgs & feature flag, then starts a polling
@@ -533,7 +543,7 @@ func (t *TokenScopeValidationMiddlewareImpl) isFeatureEnabled(ctx context.Contex
 
 // extracts the JSON web token of the user from the context. If no token is found
 // in the context then the result will be nil.
-func tokenClaimsFromContext(ctx context.Context) (result jwt.MapClaims, err error) {
+func TokenClaimsFromContext(ctx context.Context) (result jwt.MapClaims, err error) {
 	token, err := authentication.TokenFromContext(ctx)
 
 	if err == nil && token == nil {
@@ -554,7 +564,7 @@ func tokenClaimsFromContext(ctx context.Context) (result jwt.MapClaims, err erro
 	return result, err
 }
 
-func isServiceAccount(claims jwt.MapClaims) bool {
+func IsServiceAccount(claims jwt.MapClaims) bool {
 	_, clientIDExists := claims[ClaimClientId]
 	if !clientIDExists {
 		_, clientIDExists = claims[ClaimClientIdLegacy]
