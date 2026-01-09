@@ -737,3 +737,134 @@ func callbackExpectError(w http.ResponseWriter, r *http.Request, err error) {
 	w.WriteHeader(http.StatusForbidden)
 	w.Write([]byte(err.Error()))
 }
+
+func TestGetOrgIdFromClaims_DirectOrgId(t *testing.T) {
+	RegisterTestingT(t)
+
+	claims := jwt.MapClaims{
+		ClaimOrgId: "test-org-123",
+	}
+
+	orgID, ok, err := GetOrgIdFromClaims(claims)
+
+	Expect(err).NotTo(HaveOccurred())
+	Expect(ok).To(BeTrue())
+	Expect(orgID).To(Equal("test-org-123"))
+}
+
+func TestGetOrgIdFromClaims_OrganizationFallback(t *testing.T) {
+	RegisterTestingT(t)
+
+	claims := jwt.MapClaims{
+		ClaimOrganization: map[string]interface{}{
+			ClaimId: "fallback-org-456",
+		},
+	}
+
+	orgID, ok, err := GetOrgIdFromClaims(claims)
+
+	Expect(err).NotTo(HaveOccurred())
+	Expect(ok).To(BeTrue())
+	Expect(orgID).To(Equal("fallback-org-456"))
+}
+
+func TestGetOrgIdFromClaims_BothPresent(t *testing.T) {
+	RegisterTestingT(t)
+
+	// When both org_id and organization.id are present, org_id should take precedence
+	claims := jwt.MapClaims{
+		ClaimOrgId: "primary-org-123",
+		ClaimOrganization: map[string]interface{}{
+			ClaimId: "fallback-org-456",
+		},
+	}
+
+	orgID, ok, err := GetOrgIdFromClaims(claims)
+
+	Expect(err).NotTo(HaveOccurred())
+	Expect(ok).To(BeTrue())
+	Expect(orgID).To(Equal("primary-org-123"))
+}
+
+func TestGetOrgIdFromClaims_NoOrgId(t *testing.T) {
+	RegisterTestingT(t)
+
+	claims := jwt.MapClaims{
+		"scope": "openid",
+	}
+
+	orgID, ok, err := GetOrgIdFromClaims(claims)
+
+	Expect(err).NotTo(HaveOccurred())
+	Expect(ok).To(BeFalse())
+	Expect(orgID).To(BeEmpty())
+}
+
+func TestGetOrgIdFromClaims_OrganizationNotMap(t *testing.T) {
+	RegisterTestingT(t)
+
+	// organization claim exists but is not a map
+	claims := jwt.MapClaims{
+		ClaimOrganization: "not-a-map",
+	}
+
+	orgID, ok, err := GetOrgIdFromClaims(claims)
+
+	Expect(err).NotTo(HaveOccurred())
+	Expect(ok).To(BeFalse())
+	Expect(orgID).To(BeEmpty())
+}
+
+func TestGetOrgIdFromClaims_OrganizationMissingId(t *testing.T) {
+	RegisterTestingT(t)
+
+	// organization is a map but doesn't contain id field
+	claims := jwt.MapClaims{
+		ClaimOrganization: map[string]interface{}{
+			"name": "some-org-name",
+		},
+	}
+
+	orgID, ok, err := GetOrgIdFromClaims(claims)
+
+	Expect(err).To(HaveOccurred())
+	Expect(err.Error()).To(ContainSubstring("failed to get organization id from token"))
+	Expect(ok).To(BeFalse())
+	Expect(orgID).To(BeEmpty())
+}
+
+func TestGetOrgIdFromClaims_OrganizationIdNotString(t *testing.T) {
+	RegisterTestingT(t)
+
+	// organization.id exists but is not a string
+	claims := jwt.MapClaims{
+		ClaimOrganization: map[string]interface{}{
+			ClaimId: 12345,
+		},
+	}
+
+	orgID, ok, err := GetOrgIdFromClaims(claims)
+
+	Expect(err).To(HaveOccurred())
+	Expect(err.Error()).To(ContainSubstring("failed to get organization id from token"))
+	Expect(ok).To(BeFalse())
+	Expect(orgID).To(BeEmpty())
+}
+
+func TestGetOrgIdFromClaims_OrgIdNotString(t *testing.T) {
+	RegisterTestingT(t)
+
+	// org_id exists but is not a string, should fall back to organization.id
+	claims := jwt.MapClaims{
+		ClaimOrgId: 12345,
+		ClaimOrganization: map[string]interface{}{
+			ClaimId: "fallback-org-789",
+		},
+	}
+
+	orgID, ok, err := GetOrgIdFromClaims(claims)
+
+	Expect(err).NotTo(HaveOccurred())
+	Expect(ok).To(BeTrue())
+	Expect(orgID).To(Equal("fallback-org-789"))
+}
