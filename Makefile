@@ -1,6 +1,6 @@
 # Verifies that source passes standard checks.
 verify: check-gopath
-	go vet \
+	GOFLAGS="-mod=mod" go vet \
 		./pkg/...
 .PHONY: verify
 
@@ -20,12 +20,13 @@ test:
 .PHONY: test-unit
 test-unit:
 ifndef JUNITFILE
-	go test -race ./...
+	GOFLAGS="-mod=mod" go test -race ./...
 else
 ifeq (, $(shell which gotestsum 2>/dev/null))
-	$(error gotestsum not found! Get it by `go get -mod='' -u github.com/openshift/release/tools/gotest2junit`.)
+	@echo "Installing gotestsum..."
+	GOFLAGS="-mod=mod" go install gotest.tools/gotestsum@latest
 endif
-	gotestsum --junitfile $(JUNITFILE) -- -race ./...
+	GOFLAGS="-mod=mod" gotestsum --junitfile $(JUNITFILE) -- -race ./...
 endif
 .PHONY: test-unit
 
