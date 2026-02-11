@@ -170,7 +170,7 @@ var _ = Describe("Deprecation Middleware", func() {
 			sunsetDate := time.Now().UTC().Add(24 * time.Hour)
 			nextHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				deprecations := deprecation.GetFieldDeprecations(r.Context())
-				err := deprecations.Add("test_field", "This field is deprecated", sunsetDate)
+				err := deprecations.Add("test_field", "This field is deprecated", sunsetDate, true)
 				Expect(err).ToNot(HaveOccurred())
 
 				nextCalled = true
@@ -196,14 +196,44 @@ var _ = Describe("Deprecation Middleware", func() {
 			Expect(fieldDeprecationHeader).To(ContainSubstring("This field is deprecated"))
 		})
 
-		It("should return error to user when sunset date has passed", func() {
+		It("should return error to user when sunset date has passed and failAfterSunsetDate is true", func() {
 			sunsetDate := time.Now().UTC().Add(-24 * time.Hour)
 			nextHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				deprecations := deprecation.GetFieldDeprecations(r.Context())
-				err := deprecations.Add("test_field", "This field is deprecated", sunsetDate)
+				err := deprecations.Add("test_field", "This field is deprecated", sunsetDate, true)
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("This field is deprecated"))
 			})
+		})
+
+		It("should add disablement message as header when sunset date has passed and failAfterSunsetDate is false", func() {
+			sunsetDate := time.Now().UTC().Add(-24 * time.Hour)
+			nextHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				deprecations := deprecation.GetFieldDeprecations(r.Context())
+				err := deprecations.Add("test_field", "This field is disabled", sunsetDate, false)
+				Expect(err).ToNot(HaveOccurred())
+
+				nextCalled = true
+				w.WriteHeader(http.StatusOK)
+			})
+
+			cfg := MiddlewareConfig{
+				Endpoints:              map[string]DeprecatedEndpoint{},
+				EnableFieldDeprecation: true,
+			}
+			handler = NewDeprecationMiddleware(cfg)(nextHandler)
+
+			req := httptest.NewRequest("GET", "/api/test", nil)
+			handler.ServeHTTP(responseRecorder, req)
+
+			Expect(responseRecorder.Code).To(Equal(http.StatusOK))
+			Expect(nextCalled).To(BeTrue())
+
+			// Verify that field deprecation header was set with disablement message
+			fieldDeprecationHeader := responseRecorder.Header().Get(consts.OcmFieldDeprecation)
+			Expect(fieldDeprecationHeader).ToNot(BeEmpty())
+			Expect(fieldDeprecationHeader).To(ContainSubstring("test_field"))
+			Expect(fieldDeprecationHeader).To(ContainSubstring("This field is disabled"))
 		})
 
 		It("should not set field deprecation headers when no deprecations are added", func() {
