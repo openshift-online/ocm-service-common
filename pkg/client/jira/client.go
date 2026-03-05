@@ -151,6 +151,13 @@ func (c *Client) addIssueFields(newIssue jira.Issue, fieldsConfig *FieldsConfigu
 			}
 		}
 
+		// priority
+		if fieldsConfig.Priority != nil && *fieldsConfig.Priority != "" {
+			newIssue.Fields.Priority = &jira.Priority{
+				Name: *fieldsConfig.Priority,
+			}
+		}
+
 		// componenet/s
 		for _, component := range fieldsConfig.Components {
 			if component != nil && *component != "" {

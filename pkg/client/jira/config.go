@@ -7,6 +7,7 @@ type FieldsConfiguration struct {
 	Reporter    *string
 	Assignee    *string
 	IssueType   *string
+	Priority    *string
 	Labels      []*string
 	Components  []*string
 	Unknowns    map[string]interface{}
