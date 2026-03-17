@@ -211,15 +211,15 @@ func (c *Client) PostAttachment(issueID *string, r io.Reader, name string) (atta
 }
 
 func (c *Client) GetAllIssues(searchString string, maxResults int) ([]jira.Issue, error) {
-	last := 0
+	nextPageToken := ""
 	issues := make([]jira.Issue, 0)
 	for {
-		opt := &jira.SearchOptions{
-			MaxResults: maxResults, // Max results can go up to 1000
-			StartAt:    last,
+		opt := &jira.SearchOptionsV2{
+			MaxResults:    maxResults, // Max results can go up to 1000
+			NextPageToken: nextPageToken,
 		}
 
-		chunk, resp, err := c.jiraClient.Issue.Search(searchString, opt)
+		chunk, resp, err := c.jiraClient.Issue.SearchV2JQL(searchString, opt)
 		if err != nil {
 			if isRateLimitError(err) {
 				return nil, errors.TooManyRequests.Wrapf(err, "Rate limit exceeded to search issues")
@@ -227,10 +227,9 @@ func (c *Client) GetAllIssues(searchString string, maxResults int) ([]jira.Issue
 			return nil, err
 		}
 
-		total := resp.Total
 		issues = append(issues, chunk...)
-		last = resp.StartAt + len(chunk)
-		if last >= total {
+		nextPageToken = resp.NextPageToken
+		if nextPageToken == "" {
 			return issues, nil
 		}
 	}
