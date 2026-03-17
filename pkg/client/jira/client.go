@@ -101,11 +101,16 @@ func (c *Client) CreateIssue(fieldsConfig *FieldsConfiguration) (issue *jira.Iss
 		return nil, err
 	}
 
+	reporterAccountID, err := c.GetAccountID(*fieldsConfig.Reporter)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to resolve account ID for reporter %q", *fieldsConfig.Reporter)
+	}
+
 	newIssue := jira.Issue{
 		Fields: &jira.IssueFields{
 			Summary: *fieldsConfig.Summary,
 			Reporter: &jira.User{
-				Name: *fieldsConfig.Reporter,
+				AccountID: reporterAccountID,
 			},
 			Type: jira.IssueType{
 				Name: *fieldsConfig.IssueType,
@@ -181,6 +186,17 @@ func (c *Client) addIssueFields(newIssue jira.Issue, fieldsConfig *FieldsConfigu
 			newIssue.Fields.Unknowns = unknowns
 		}
 	}
+}
+
+func (c *Client) GetAccountID(email string) (string, error) {
+	users, _, err := c.jiraClient.User.Find(email)
+	if err != nil {
+		return "", err
+	}
+	if len(users) == 0 {
+		return "", errors.NotFound.Errorf("no Jira user found for email %q", email)
+	}
+	return users[0].AccountID, nil
 }
 
 func (c *Client) PostAttachment(issueID *string, r io.Reader, name string) (attachment *[]jira.Attachment, err error) {

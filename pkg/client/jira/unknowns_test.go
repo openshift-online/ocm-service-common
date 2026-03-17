@@ -8,7 +8,7 @@ import (
 )
 
 // set const here, to ensure if `ProductsCustomField` changes the test will fail
-const productsCustomField = "customfield_12319040"
+const productsCustomField = "customfield_10868"
 
 var _ = Describe("Unknowns Test", func() {
 	When("Unknown `Products` custom field is passed", func() {
