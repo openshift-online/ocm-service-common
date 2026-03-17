@@ -1,10 +1,10 @@
 package jira
 
-const ProductsCustomField = "customfield_12319040"
-const ClusterIdField = "customfield_12316349"
-const ClusterOrgField = "customfield_12310160"
-const StoryPointsField = "customfield_12310243"
-const WorkTypeField = "customfield_12320040"
+const ProductsCustomField = "customfield_10868"
+const ClusterIdField = "customfield_10852"
+const ClusterOrgField = "customfield_10746"
+const StoryPointsField = "customfield_10028"
+const WorkTypeField = "customfield_10464"
 
 var known = map[string]string{
 	"Products":    ProductsCustomField,
