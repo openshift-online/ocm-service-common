@@ -2,11 +2,16 @@ package jira
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/andygrunwald/go-jira"
+	"github.com/openshift-online/ocm-sdk-go/testing"
+
 	// nolint
 	. "github.com/onsi/ginkgo/v2"
+	"github.com/onsi/gomega/ghttp"
+
 	// nolint
 	. "github.com/onsi/gomega"
 )
@@ -262,6 +267,103 @@ var _ = Describe("Jira issue", func() {
 			}
 			jiraClient.addIssueFields(newIssue, fieldsConfiguration)
 			Expect(newIssue.Fields.Unknowns).To(BeEmpty())
+		})
+	})
+})
+
+var _ = Describe("Jira Client", func() {
+	var jiraServer *ghttp.Server
+	var jiraClient *Client
+	BeforeEach(func() {
+		jiraServer = testing.MakeTCPServer()
+		jiraServer.SetAllowUnhandledRequests(true)
+		jiraServer.SetUnhandledRequestStatusCode(http.StatusInternalServerError)
+		jiraClient, _ = NewClient("user", "pass", jiraServer.URL())
+	})
+	Describe("GetAllIssues", func() {
+		When("set of issues is empty", func() {
+			BeforeEach(func() {
+				jiraServer.AppendHandlers(
+					ghttp.CombineHandlers(
+						ghttp.VerifyBasicAuth("user", "pass"),
+						ghttp.VerifyRequest(http.MethodGet, "/rest/api/2/search/jql"),
+						testing.RespondWithJSON(http.StatusOK, `{"nextPageToken": "", "isLast": true, "issues": []}`),
+					),
+				)
+			})
+			It("should return an empty set of issues", func() {
+				issues, err := jiraClient.GetAllIssues("", 100)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(issues).To(HaveLen(0))
+			})
+		})
+		When("set of issues is a single page", func() {
+			BeforeEach(func() {
+				jiraServer.AppendHandlers(
+					ghttp.CombineHandlers(
+						ghttp.VerifyBasicAuth("user", "pass"),
+						ghttp.VerifyRequest(http.MethodGet, "/rest/api/2/search/jql"),
+						testing.RespondWithJSON(http.StatusOK, `{"nextPageToken": "", "isLast": true, "issues": [{}, {}]}`),
+					),
+				)
+			})
+			It("should return that single page of issues", func() {
+				issues, err := jiraClient.GetAllIssues("", 100)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(issues).To(HaveLen(2))
+			})
+		})
+		When("set of issues is a multiple pages", func() {
+			BeforeEach(func() {
+				jiraServer.AppendHandlers(
+					ghttp.CombineHandlers(
+						ghttp.VerifyBasicAuth("user", "pass"),
+						ghttp.VerifyRequest(http.MethodGet, "/rest/api/2/search/jql"),
+						testing.RespondWithJSON(http.StatusOK, `{"nextPageToken": "next", "isLast": false, "issues": [{}, {}]}`),
+					),
+					ghttp.CombineHandlers(
+						ghttp.VerifyBasicAuth("user", "pass"),
+						ghttp.VerifyRequest(http.MethodGet, "/rest/api/2/search/jql"),
+						ghttp.VerifyFormKV("nextPageToken", "next"),
+						testing.RespondWithJSON(http.StatusOK, `{"nextPageToken": "", "isLast": true, "issues": [{}, {}, {}]}`),
+					),
+				)
+			})
+			It("should return the concatenated multiple pages of issues", func() {
+				issues, err := jiraClient.GetAllIssues("", 100)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(issues).To(HaveLen(5))
+			})
+		})
+		When("jira client returns a generic error", func() {
+			BeforeEach(func() {
+				jiraServer.AppendHandlers(
+					ghttp.CombineHandlers(
+						ghttp.VerifyBasicAuth("user", "pass"),
+						ghttp.VerifyRequest(http.MethodGet, "/rest/api/2/search/jql"),
+						testing.RespondWithJSON(http.StatusBadRequest, ""),
+					),
+				)
+			})
+			It("should return a generic error", func() {
+				_, err := jiraClient.GetAllIssues("", 100)
+				Expect(err).To(HaveOccurred())
+			})
+		})
+		When("jira client returns a rate limit error", func() {
+			BeforeEach(func() {
+				jiraServer.AppendHandlers(
+					ghttp.CombineHandlers(
+						ghttp.VerifyBasicAuth("user", "pass"),
+						ghttp.VerifyRequest(http.MethodGet, "/rest/api/2/search/jql"),
+						testing.RespondWithJSON(http.StatusTooManyRequests, `{"errorMessages": ["429 Too Many Requests"]}`),
+					),
+				)
+			})
+			It("should return a rate limiting specific error", func() {
+				_, err := jiraClient.GetAllIssues("", 100)
+				Expect(err).To(MatchError(ContainSubstring("Rate limit exceeded to search issues")))
+			})
 		})
 	})
 })
