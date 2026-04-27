@@ -33,3 +33,28 @@ The `make release` target will:
 - Push the tag to the `upstream` remote
 
 Note that a repository administrator may need to push the tag to the repository due to access restrictions.
+
+## Installation
+
+```bash
+export GOPRIVATE=gitlab.cee.redhat.com
+go get github.com/openshift-online/ocm-service-common
+```
+
+## Development
+
+### Testing
+
+```bash
+make test             # Run all tests
+make test-unit        # Run unit tests only
+make verify           # Run source verification
+```
+
+### Contributing
+
+1. Fork this repository
+2. Create a feature branch from `master`
+3. Make your changes
+4. Run `make test` and `make verify`
+5. Submit a pull request
