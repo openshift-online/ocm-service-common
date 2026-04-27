@@ -1,11 +1,11 @@
 module github.com/openshift-online/ocm-service-common
 
-go 1.24.7
+go 1.26
 
 require (
 	github.com/andygrunwald/go-jira v1.17.0
 	github.com/cenkalti/backoff/v4 v4.1.3
-	github.com/getkin/kin-openapi v0.131.0
+	github.com/getkin/kin-openapi v0.136.0
 	github.com/getsentry/sentry-go v0.23.0
 	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/golang/glog v1.2.4
@@ -26,8 +26,10 @@ require (
 )
 
 require (
-	github.com/oasdiff/yaml v0.0.0-20250309154309-f31be36b4037 // indirect
-	github.com/oasdiff/yaml3 v0.0.0-20250309153720-d2182401db90 // indirect
+	github.com/oasdiff/yaml v0.0.9 // indirect
+	github.com/oasdiff/yaml3 v0.0.12 // indirect
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
+	github.com/woodsbury/decimal128 v1.3.0 // indirect
 )
 
 require (
