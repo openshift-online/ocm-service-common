@@ -4,7 +4,7 @@ go 1.24.7
 
 require (
 	github.com/andygrunwald/go-jira v1.17.0
-	github.com/cenkalti/backoff/v4 v4.1.3
+	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/getkin/kin-openapi v0.131.0
 	github.com/getsentry/sentry-go v0.23.0
 	github.com/golang-jwt/jwt/v4 v4.5.2
