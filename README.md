@@ -2,6 +2,13 @@
 
 This project contains a Go library with utility functions.
 
+## Quick Start
+
+```bash
+make test        # Run all tests
+make verify      # Run source verification
+```
+
 ## Usage
 
 To use it, run the command `export GOPRIVATE=gitlab.cee.redhat.com` in the terminal,
