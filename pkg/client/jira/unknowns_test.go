@@ -32,5 +32,12 @@ var _ = Describe("Unknowns Test", func() {
 				"if this fails the Cluster Org custom field has changed, check that the change is valid")
 		})
 	})
+	When("Unknown `Team` custom field is passed", func() {
+		It("Should return the valid custom field", func() {
+			knownField := getUnknownCustomField("Team")
+			Expect(knownField).To(Equal(TeamField),
+				"if this fails the Team custom field has changed, check that the change is valid")
+		})
+	})
 
 })
