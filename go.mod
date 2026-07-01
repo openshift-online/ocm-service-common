@@ -18,7 +18,7 @@ require (
 	github.com/openshift-online/ocm-sdk-go v0.1.465
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.21.1
-	github.com/rs/zerolog v1.30.0
+	github.com/rs/zerolog v1.35.1
 	github.com/segmentio/analytics-go/v3 v3.2.1
 	github.com/zgalor/weberr v0.8.2
 	golang.org/x/net v0.38.0
@@ -59,8 +59,8 @@ require (
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
-	github.com/mattn/go-colorable v0.1.13 // indirect
-	github.com/mattn/go-isatty v0.0.19 // indirect
+	github.com/mattn/go-colorable v0.1.14 // indirect
+	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/microcosm-cc/bluemonday v1.0.23 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
