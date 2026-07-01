@@ -20,7 +20,7 @@ require (
 	github.com/prometheus/client_golang v1.21.1
 	github.com/rs/zerolog v1.30.0
 	github.com/segmentio/analytics-go/v3 v3.2.1
-	github.com/zgalor/weberr v0.8.2
+	github.com/zgalor/weberr v0.9.0
 	golang.org/x/net v0.38.0
 	gopkg.in/yaml.v3 v3.0.1
 )
