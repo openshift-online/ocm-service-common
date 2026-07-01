@@ -1,5 +1,9 @@
 version: 2
 
+builds:
+#library repo
+  - skip: true
+
 release:
   prerelease: auto
   mode: append
@@ -15,3 +19,7 @@ changelog:
       order: 1
     - title: Others
       order: 999
+  filters:
+    exclude:
+      - '^Merge pull request #'
+      - '^Merge branch '
