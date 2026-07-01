@@ -1,12 +1,12 @@
 module github.com/openshift-online/ocm-service-common
 
-go 1.24.7
+go 1.25.0
 
 require (
 	github.com/andygrunwald/go-jira v1.17.0
 	github.com/cenkalti/backoff/v4 v4.1.3
 	github.com/getkin/kin-openapi v0.131.0
-	github.com/getsentry/sentry-go v0.23.0
+	github.com/getsentry/sentry-go v0.46.0
 	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/golang/glog v1.2.4
 	github.com/google/uuid v1.6.0
