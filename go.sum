@@ -114,8 +114,8 @@ github.com/openshift-online/ocm-api-model/model v0.0.466 h1:9SFl9h8N8r6IM8XxWd/V
 github.com/openshift-online/ocm-api-model/model v0.0.466/go.mod h1:PQIoq6P8Vlb7goOdRMLK8nJY+B7HH0RTqYAa4kyidTE=
 github.com/openshift-online/ocm-common v0.0.45 h1:bwYNMdhnFNfmzrsf8hH9kqs6Jj5+jSG+JcE60JHVlGE=
 github.com/openshift-online/ocm-common v0.0.45/go.mod h1:8+czO01A9gb1KDOwGmgEhZOZ/iTImuLQVo6l54jJc0I=
-github.com/openshift-online/ocm-sdk-go v0.1.510 h1:oPwgGHPi6LeY+RANXUhJwVvkY4yvddyRqHHThHZZRyM=
-github.com/openshift-online/ocm-sdk-go v0.1.510/go.mod h1:7zNO9AaTPxnqb7/pynAJqKWaxB/GSJePnOndlQJWk60=
+github.com/openshift-online/ocm-sdk-go v0.1.511 h1:TNCk8OJ46MAoRrJi/+abamMX7NPMakQPOmQSgh+3mCw=
+github.com/openshift-online/ocm-sdk-go v0.1.511/go.mod h1:ek++9SX2vT44xZTHLH9tCH6INxQW2ebQtPsb63STGPM=
 github.com/pingcap/errors v0.11.4 h1:lFuQV/oaUMGcD2tqt+01ROSmJs75VG1ToEOkZIZ4nE4=
 github.com/pingcap/errors v0.11.4/go.mod h1:Oi8TUi2kEtXXLMJk9l1cGmz20kV3TaQ0usTwv5KuLY8=
 github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=

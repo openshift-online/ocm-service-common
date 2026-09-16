@@ -15,7 +15,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.32.2
 	github.com/onsi/gomega v1.43.0
 	github.com/openshift-online/async-routine v0.0.0-20260504122420-ff6b1e3ecc91
-	github.com/openshift-online/ocm-sdk-go v0.1.510
+	github.com/openshift-online/ocm-sdk-go v0.1.511
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.24.1
 	github.com/rs/zerolog v1.35.1
