@@ -15,7 +15,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.32.2
 	github.com/onsi/gomega v1.43.0
 	github.com/openshift-online/async-routine v0.0.0-20260504122420-ff6b1e3ecc91
-	github.com/openshift-online/ocm-sdk-go v0.1.510
+	github.com/openshift-online/ocm-sdk-go v0.1.515
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.24.1
 	github.com/rs/zerolog v1.35.1
@@ -31,8 +31,8 @@ require (
 	github.com/lib/pq v1.10.5 // indirect
 	github.com/oasdiff/yaml v0.1.1 // indirect
 	github.com/oasdiff/yaml3 v0.0.14 // indirect
-	github.com/openshift-online/ocm-api-model/clientapi v0.0.466 // indirect
-	github.com/openshift-online/ocm-api-model/model v0.0.466 // indirect
+	github.com/openshift-online/ocm-api-model/clientapi v0.0.469 // indirect
+	github.com/openshift-online/ocm-api-model/model v0.0.469 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/mod v0.40.0 // indirect
