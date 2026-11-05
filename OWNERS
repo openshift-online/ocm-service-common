@@ -1,22 +1,10 @@
-reviewers:
-  - lucasponce
-  - robpblake
-  - andreadecorte
-  - gdbranco
-  - rcampos2029
-  - davidleerh
-  - marcolan018
-  - chenz4027
-  - patrickjennings
-  - philipwu08
 approvers:
-  - lucasponce
-  - robpblake
-  - andreadecorte
-  - gdbranco
-  - rcampos2029
-  - davidleerh
-  - marcolan018
-  - chenz4027
-  - patrickjennings
-  - philipwu08
+  - rosa-services-focaccia
+  - rosa-services-fibonacci
+# can approve but won't be assigned directly to reviewers
+advisory_approvers:
+  - tdrozdowski
+  - rosa-services-staff-engineers
+reviewers:
+  - rosa-services-focaccia
+  - rosa-services-fibonacci
