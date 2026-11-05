@@ -66,3 +66,7 @@ release: validate-version
 	git tag -a -m 'Release $(VERSION)' $(VERSION)
 	git push upstream $(VERSION)
 	@echo "Release $(VERSION) created and pushed successfully!"
+
+.PHONY: boilerplate-update
+boilerplate-update:
+	@boilerplate/update
