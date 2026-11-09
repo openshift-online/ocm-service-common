@@ -1,3 +1,9 @@
+include boilerplate/generated-includes.mk
+
+# The included boilerplate makefile defines targets of its own, so set the
+# default goal explicitly to keep `verify` as the default.
+.DEFAULT_GOAL := verify
+
 # Verifies that source passes standard checks.
 verify: check-gopath
 	GOFLAGS="-mod=mod" go vet \
@@ -66,3 +72,7 @@ release: validate-version
 	git tag -a -m 'Release $(VERSION)' $(VERSION)
 	git push upstream $(VERSION)
 	@echo "Release $(VERSION) created and pushed successfully!"
+
+.PHONY: boilerplate-update
+boilerplate-update:
+	@boilerplate/update
